@@ -12,6 +12,8 @@ source_profile: curated-mixed
 max_items_per_hotlist: 5
 max_items_per_news_section: 5
 max_items_per_game_section: 5
+news_freshness_days: 14
+game_news_freshness_days: 21
 
 ai:
   model: openai/LongCat-Flash-Chat
@@ -61,18 +63,34 @@ english_feeds:
 
 news_feeds:
   domestic:
-    - id: people-domestic
-      name: 人民网国内
-      url: http://www.people.com.cn/rss/politics.xml
-      max_items: 8
+    - id: google-news-domestic
+      name: Google News 国内
+      url: https://news.google.com/rss/search?q=when:24h+国内新闻&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+      max_items: 20
+    - id: google-news-china
+      name: Google News 中国
+      url: https://news.google.com/rss/search?q=when:24h+中国&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+      max_items: 20
     - id: china-news-scroll
       name: 中新网滚动
       url: https://www.chinanews.com.cn/rss/scroll-news.xml
-      max_items: 8
+      max_items: 12
   international:
+    - id: google-news-world-zh
+      name: Google News 国际
+      url: https://news.google.com/rss/search?q=when:24h+国际新闻&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+      max_items: 20
+    - id: google-news-world-en
+      name: Google News World
+      url: https://news.google.com/rss/search?q=when:24h+world&hl=en-US&gl=US&ceid=US:en
+      max_items: 20
     - id: bbc-world
       name: BBC World
       url: https://feeds.bbci.co.uk/news/world/rss.xml
+      max_items: 10
+    - id: le-monde-international
+      name: Le Monde International
+      url: https://www.lemonde.fr/en/international/rss_full.xml
       max_items: 10
 
 game_news_feeds:

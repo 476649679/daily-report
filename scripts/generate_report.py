@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
 from typing import Dict, Iterable, List
@@ -21,6 +21,93 @@ if str(REPO_ROOT) not in sys.path:
 
 from scripts.fetch_github_trending import fetch_github_trending
 from scripts.report_builder import build_issue_title, render_issue_markdown
+
+
+EXCLUDED_GAME_KEYWORDS = [
+    "🔞",
+    "adult",
+    "nsfw",
+    "sex",
+    "hentai",
+    "ntr",
+    "succubus",
+    "nude",
+    "fetish",
+    "erotic",
+    "soundtrack",
+    "ost",
+    "wallpaper",
+    "playtest",
+    "demo",
+    "dlc",
+    "midnight training",
+    "bunny garden",
+]
+
+LOW_SIGNAL_NEWS_KEYWORDS = [
+    "活动",
+    "礼物",
+    "见闻",
+    "周末",
+    "展演",
+    "打卡",
+    "读书",
+    "文旅",
+    "攻略",
+    "图集",
+    "写真",
+    "花絮",
+    "直播预告",
+]
+
+MAJOR_NEWS_KEYWORDS = [
+    "特朗普",
+    "伊朗",
+    "以色列",
+    "俄罗斯",
+    "乌克兰",
+    "关税",
+    "停火",
+    "袭击",
+    "地震",
+    "外交",
+    "制裁",
+    "油价",
+    "枪击",
+    "辞职",
+    "协议",
+    "战争",
+    "危机",
+]
+
+DOMESTIC_PRIORITY_KEYWORDS = [
+    "中国",
+    "国内",
+    "国务院",
+    "外交部",
+    "发改委",
+    "商务部",
+    "全国",
+    "中央",
+    "北京",
+    "上海",
+    "深圳",
+    "香港",
+]
+
+INTERNATIONAL_PRIORITY_KEYWORDS = [
+    "美国",
+    "日本",
+    "伊朗",
+    "以色列",
+    "俄罗斯",
+    "乌克兰",
+    "欧洲",
+    "英国",
+    "法国",
+    "国际",
+    "全球",
+]
 
 
 def load_config(config_path: str = "config/report.yaml") -> Dict:
@@ -135,6 +222,34 @@ def clean_summary_text(raw_text: str) -> str:
     return text[:220]
 
 
+def parse_entry_datetime(entry) -> str:
+    parsed = (
+        entry.get("published_parsed")
+        or entry.get("updated_parsed")
+        or entry.get("created_parsed")
+    )
+    if not parsed:
+        return ""
+    return datetime(*parsed[:6], tzinfo=timezone.utc).isoformat()
+
+
+def first_sentence(summary: str) -> str:
+    text = (summary or "").strip()
+    if not text:
+        return ""
+    match = re.search(r"^.*?[。！？.!?]", text)
+    sentence = match.group(0).strip() if match else text
+    return sentence[:120]
+
+
+def is_english_heavy(text: str) -> bool:
+    if not text:
+        return False
+    ascii_letters = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    return ascii_letters > cjk
+
+
 def fetch_news_section_candidates(feed_configs: List[Dict], section_name: str) -> List[Dict]:
     items: List[Dict] = []
     for feed in feed_configs:
@@ -152,6 +267,7 @@ def fetch_news_section_candidates(feed_configs: List[Dict], section_name: str) -
                     "title": title,
                     "url": url,
                     "summary": clean_summary_text(entry.get("summary") or entry.get("description") or ""),
+                    "published_at": parse_entry_datetime(entry),
                 }
             )
     return dedupe_candidates(items)
@@ -229,6 +345,45 @@ def mix_game_candidates(releases: List[Dict], news: List[Dict], limit: int) -> L
     return mixed[:limit]
 
 
+def is_excluded_game_candidate(item: Dict) -> bool:
+    haystack = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+    return any(keyword in haystack for keyword in EXCLUDED_GAME_KEYWORDS)
+
+
+def game_candidate_score(item: Dict) -> int:
+    score = 0
+    if item.get("source_type") == "game_news":
+        score += 100
+    if item.get("source") in {"Game Informer", "GameSpot"}:
+        score += 20
+    title = item.get("title", "")
+    if 4 <= len(title) <= 40:
+        score += 5
+    if re.search(r"[🔞✨❤♡★☆]", title):
+        score -= 50
+    if re.search(r"[!@#$%^&*]{2,}", title):
+        score -= 20
+    return score
+
+
+def curate_game_candidates(releases: List[Dict], news: List[Dict], limit: int) -> List[Dict]:
+    filtered_releases = [item for item in releases if not is_excluded_game_candidate(item)]
+    filtered_news = [item for item in news if not is_excluded_game_candidate(item)]
+    filtered_releases.sort(key=game_candidate_score, reverse=True)
+    filtered_news.sort(key=game_candidate_score, reverse=True)
+
+    curated: List[Dict] = []
+    max_len = max(len(filtered_news), len(filtered_releases))
+    for idx in range(max_len):
+        if idx < len(filtered_news):
+            curated.append(filtered_news[idx])
+        if idx < len(filtered_releases):
+            curated.append(filtered_releases[idx])
+        if len(curated) >= limit:
+            break
+    return curated[:limit]
+
+
 def fetch_hotlist_candidates(config: Dict, trendradar_path: str) -> List[Dict]:
     DataFetcher = load_trendradar_fetcher(trendradar_path)
     fetcher = DataFetcher()
@@ -263,6 +418,68 @@ def dedupe_candidates(items: Iterable[Dict]) -> List[Dict]:
         seen.add(key)
         deduped.append(item)
     return deduped
+
+
+def news_candidate_score(item: Dict, section: str = "") -> int:
+    score = 0
+    haystack = f"{item.get('title', '')} {item.get('summary', '')}"
+    if item.get("source", "").startswith("Google News"):
+        score += 40
+    elif item.get("source") in {"BBC World", "Le Monde International"}:
+        score += 30
+    elif item.get("source") == "中新网滚动":
+        score += 20
+
+    lowered = haystack.lower()
+    if any(keyword.lower() in lowered for keyword in MAJOR_NEWS_KEYWORDS):
+        score += 50
+    if any(keyword.lower() in lowered for keyword in LOW_SIGNAL_NEWS_KEYWORDS):
+        score -= 60
+    if section == "domestic":
+        if any(keyword.lower() in lowered for keyword in DOMESTIC_PRIORITY_KEYWORDS):
+            score += 35
+        if any(keyword.lower() in lowered for keyword in INTERNATIONAL_PRIORITY_KEYWORDS):
+            score -= 45
+    if section == "international":
+        if any(keyword.lower() in lowered for keyword in INTERNATIONAL_PRIORITY_KEYWORDS):
+            score += 35
+        if any(keyword.lower() in lowered for keyword in DOMESTIC_PRIORITY_KEYWORDS):
+            score -= 30
+
+    published_at = item.get("published_at") or ""
+    if published_at:
+        try:
+            published_dt = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+            if published_dt.tzinfo is None:
+                published_dt = published_dt.replace(tzinfo=timezone.utc)
+            age_hours = max(0.0, (datetime.now(timezone.utc) - published_dt).total_seconds() / 3600)
+            score += max(0, int(48 - min(age_hours, 48)))
+        except ValueError:
+            pass
+    return score
+
+
+def curate_news_candidates(items: List[Dict], limit: int, section: str = "") -> List[Dict]:
+    curated = []
+    for item in items:
+        summary = first_sentence(item.get("summary", ""))
+        normalized = {**item, "summary": summary}
+        lowered = f"{normalized.get('title', '')} {normalized.get('summary', '')}".lower()
+        if section == "domestic":
+            has_domestic = any(keyword.lower() in lowered for keyword in DOMESTIC_PRIORITY_KEYWORDS)
+            has_international = any(keyword.lower() in lowered for keyword in INTERNATIONAL_PRIORITY_KEYWORDS)
+            if has_international and not has_domestic:
+                continue
+        if section == "international":
+            has_domestic = any(keyword.lower() in lowered for keyword in DOMESTIC_PRIORITY_KEYWORDS)
+            has_international = any(keyword.lower() in lowered for keyword in INTERNATIONAL_PRIORITY_KEYWORDS)
+            if has_domestic and not has_international:
+                continue
+        if news_candidate_score(normalized, section=section) < 0:
+            continue
+        curated.append(normalized)
+    curated.sort(key=lambda item: news_candidate_score(item, section=section), reverse=True)
+    return curated[:limit]
 
 
 def fallback_group_candidates(candidates: List[Dict], max_topics: int, max_items_per_topic: int) -> Dict:
@@ -307,7 +524,7 @@ def fallback_news_sections(news_candidates: Dict[str, List[Dict]], max_items: in
             {
                 "name": title,
                 "emoji": emoji,
-                "items": news_candidates.get(key, [])[:max_items],
+                "items": curate_news_candidates(news_candidates.get(key, []), max_items, section=key),
             }
         )
     return sections
@@ -467,7 +684,7 @@ def main() -> None:
         "domestic": domestic_news,
         "international": international_news,
     }
-    game_candidates = mix_game_candidates(
+    game_candidates = curate_game_candidates(
         game_releases,
         game_news,
         limit=max(config.get("max_items_per_game_section", 5) * 2, 10),
