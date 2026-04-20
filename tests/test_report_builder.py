@@ -64,8 +64,9 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertIn("### 今日天气", content)
         self.assertIn("### 明日预报（4月21日）", content)
         self.assertIn("### AI 模型动态", content)
-        self.assertIn("**Claude 新版本**", content)
+        self.assertIn("**[Claude 新版本](https://example.com/1)**", content)
         self.assertIn("新版重点强化多步推理和代理协作。", content)
+        self.assertNotIn("链接: https://example.com/1", content)
         self.assertNotIn("不应出现", content)
 
     def test_render_issue_markdown_skips_weekly_repo_section_when_not_monday(self):

@@ -68,11 +68,12 @@ def render_issue_markdown(report: Dict) -> str:
             lines.append(topic["summary"])
             lines.append("")
             for idx, item in enumerate(_limit_items(topic.get("items", []), 3), start=1):
-                lines.append(f"{idx}. **{item['title']}**")
+                title = item["title"]
+                if item.get("url"):
+                    title = f"[{title}]({item['url']})"
+                lines.append(f"{idx}. **{title}**")
                 if item.get("summary"):
                     lines.append(f"   - {item['summary']}")
-                if item.get("url"):
-                    lines.append(f"   - 链接: {item['url']}")
             lines.append("")
 
     lines.extend(
