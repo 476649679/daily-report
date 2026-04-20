@@ -9,7 +9,9 @@ class FetchGithubTrendingTests(unittest.TestCase):
         <article class="Box-row">
           <h2><a href="/owner/repo"> owner / repo </a></h2>
           <p>Useful project</p>
+          <span itemprop="programmingLanguage">Python</span>
           <a href="/owner/repo/stargazers">12,345</a>
+          <span>1,234 stars this week</span>
         </article>
         <article class="Box-row">
           <h2><a href="/another/tool"> another / tool </a></h2>
@@ -26,6 +28,8 @@ class FetchGithubTrendingTests(unittest.TestCase):
         self.assertEqual(repos[0]["url"], "https://github.com/owner/repo")
         self.assertEqual(repos[0]["description"], "Useful project")
         self.assertEqual(repos[0]["stars"], "12.3k")
+        self.assertEqual(repos[0]["today_stars"], "1.2k")
+        self.assertEqual(repos[0]["language"], "Python")
 
 
 if __name__ == "__main__":

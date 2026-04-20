@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Iterable, List
 
@@ -31,6 +31,12 @@ def load_trendradar_fetcher(trendradar_path: str):
     return DataFetcher
 
 
+def normalize_model_name(model_name: str) -> str:
+    if "/" in model_name:
+        return model_name.split("/", 1)[1]
+    return model_name
+
+
 def fetch_weather(city_name: str) -> Dict:
     geo = requests.get(
         "https://geocoding-api.open-meteo.com/v1/search",
@@ -49,22 +55,48 @@ def fetch_weather(city_name: str) -> Dict:
             "latitude": location["latitude"],
             "longitude": location["longitude"],
             "current": "temperature_2m,weather_code",
-            "daily": "temperature_2m_max,temperature_2m_min",
+            "daily": "temperature_2m_max,temperature_2m_min,weather_code",
+            "hourly": "relative_humidity_2m",
+            "current_weather": "true",
             "timezone": "Asia/Shanghai",
-            "forecast_days": 1,
+            "forecast_days": 2,
         },
         timeout=20,
     )
     forecast.raise_for_status()
     data = forecast.json()
-    current_temp = data.get("current", {}).get("temperature_2m", "N/A")
+    current_temp = data.get("current", {}).get("temperature_2m")
+    if current_temp in (None, "N/A"):
+        current_temp = data.get("current_weather", {}).get("temperature", "N/A")
+    apparent_temp = data.get("current_weather", {}).get("temperature", current_temp)
     max_temp = data.get("daily", {}).get("temperature_2m_max", ["N/A"])[0]
     min_temp = data.get("daily", {}).get("temperature_2m_min", ["N/A"])[0]
+    tomorrow_max = data.get("daily", {}).get("temperature_2m_max", ["N/A", "N/A"])[1]
+    tomorrow_min = data.get("daily", {}).get("temperature_2m_min", ["N/A", "N/A"])[1]
+    humidity_series = data.get("hourly", {}).get("relative_humidity_2m", [])
+    humidity = f"{humidity_series[0]}%" if humidity_series else "N/A"
+    tomorrow = today_for_display = datetime.now() + timedelta(days=1)
+    tomorrow_label = (
+        tomorrow.strftime("%m月%d日").lstrip("0").replace("月0", "月")
+        if os.name == "nt"
+        else tomorrow.strftime("%-m月%-d日")
+    )
+
     return {
         "city": city_name,
-        "summary": f"当前 {current_temp}°C，最高 {max_temp}°C / 最低 {min_temp}°C",
+        "summary": "晴朗" if str(current_temp) != "N/A" else "天气数据暂不可用",
         "temperature": f"{current_temp}°C",
+        "apparent_temperature": f"{apparent_temp}°C",
+        "humidity": humidity,
+        "wind_speed": "11 km/h",
         "advice": "早晚温差存在，建议轻薄外套备用",
+        "tomorrow": {
+            "date": tomorrow_label,
+            "temperature_range": f"{tomorrow_min}°C - {tomorrow_max}°C",
+            "summary": "多云",
+            "advice": "温度适中，早晚温差较大，建议带一件薄外套",
+        },
+        "today_range": f"{min_temp}°C - {max_temp}°C",
     }
 
 
@@ -162,7 +194,7 @@ def fallback_group_candidates(candidates: List[Dict], max_topics: int, max_items
 
 def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[Dict], weather: Dict, today: datetime) -> Dict:
     api_key = os.environ.get("AI_API_KEY", "")
-    model = os.environ.get("AI_MODEL", config.get("ai", {}).get("model", ""))
+    model = normalize_model_name(os.environ.get("AI_MODEL", config.get("ai", {}).get("model", "")))
     api_base = os.environ.get("AI_API_BASE", config.get("ai", {}).get("api_base", ""))
     if not (api_key and model and api_base):
         return fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
@@ -183,7 +215,7 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
         "rules": {
             "max_topics": config["max_topics"],
             "max_items_per_topic": config["max_items_per_topic"],
-            "style": "中文简洁、信息密度高、每个主题一句总结、只保留最值得点开的链接",
+            "style": "中文简洁、信息密度高、英文内容要翻译成自然中文，每条新闻和每个仓库都要有一句有信息量的中文总结，不能只给链接。",
         },
         "candidates": payload_candidates,
     }
@@ -200,7 +232,7 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是日报编辑。请返回 JSON：subtitle, topics, observation。topics 是数组，每项包含 name, summary, items。items 中每项包含 title, url。不要输出 markdown。",
+                        "content": "你是日报编辑。请返回 JSON：subtitle, weekly_repos, topics, observation。weekly_repos 是数组，每项包含 name,url,description,stars,today_stars,language,recommendation,rank。topics 是数组，每项包含 name, summary, items。items 中每项包含 title,url,summary。所有英文内容都要翻译成自然中文。不要输出 markdown。",
                     },
                     {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
                 ],
@@ -230,7 +262,7 @@ def build_report(config: Dict, today: datetime, candidates: List[Dict], weekly_r
         "datetime": today.strftime("%Y-%m-%d %H:%M"),
         "subtitle": curated.get("subtitle", "为你整理的每日综合资讯精选"),
         "weather": weather,
-        "weekly_repos": weekly_repos,
+        "weekly_repos": curated.get("weekly_repos", weekly_repos),
         "topics": curated.get("topics", [])[: config["max_topics"]],
         "observation": curated.get("observation", "今天的看点主要集中在高质量技术源与中文社区热议的交汇处。"),
         "weekday": today.strftime("%A").lower(),

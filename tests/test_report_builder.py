@@ -16,14 +16,26 @@ class ReportBuilderTests(unittest.TestCase):
                 "summary": "晴",
                 "temperature": "23°C",
                 "advice": "适合轻薄春装",
+                "apparent_temperature": "23°C",
+                "humidity": "64%",
+                "wind_speed": "11 km/h",
+                "tomorrow": {
+                    "date": "4月21日",
+                    "temperature_range": "20°C - 28°C",
+                    "summary": "多云",
+                    "advice": "早晚温差较大，建议带一件薄外套",
+                },
             },
             "weekly_repos": [
                 {
                     "rank": 1,
                     "name": "owner/repo",
                     "url": "https://github.com/owner/repo",
-                    "description": "A useful repo",
+                    "description": "一个实用仓库",
                     "stars": "12.3k",
+                    "today_stars": "1.2k",
+                    "language": "Python",
+                    "recommendation": "适合自动化日报和数据清洗场景。",
                 }
             ],
             "topics": [
@@ -31,9 +43,9 @@ class ReportBuilderTests(unittest.TestCase):
                     "name": "AI 模型动态",
                     "summary": "关注模型更新。",
                     "items": [
-                        {"title": "Claude 新版本", "url": "https://example.com/1"},
-                        {"title": "GPT 新能力", "url": "https://example.com/2"},
-                        {"title": "Gemini 更新", "url": "https://example.com/3"},
+                        {"title": "Claude 新版本", "url": "https://example.com/1", "summary": "新版重点强化多步推理和代理协作。"},
+                        {"title": "GPT 新能力", "url": "https://example.com/2", "summary": "更适合低延迟开发场景。"},
+                        {"title": "Gemini 更新", "url": "https://example.com/3", "summary": "移动端离线推理能力继续提升。"},
                         {"title": "不应出现", "url": "https://example.com/4"},
                     ],
                 }
@@ -45,10 +57,15 @@ class ReportBuilderTests(unittest.TestCase):
         content = render_issue_markdown(report)
 
         self.assertIn("## 🔥 GitHub 仓库热榜推荐", content)
-        self.assertIn("1. [owner/repo](https://github.com/owner/repo)", content)
-        self.assertIn("Stars：`12.3k`", content)
+        self.assertIn("1. **[owner/repo](https://github.com/owner/repo)**", content)
+        self.assertIn("⭐ 今日新增 1.2k | ⭐ 总 Star 12.3k | Python", content)
+        self.assertIn("一个实用仓库", content)
+        self.assertIn("适合自动化日报和数据清洗场景。", content)
+        self.assertIn("### 今日天气", content)
+        self.assertIn("### 明日预报（4月21日）", content)
         self.assertIn("### AI 模型动态", content)
-        self.assertIn("[Claude 新版本](https://example.com/1)", content)
+        self.assertIn("**Claude 新版本**", content)
+        self.assertIn("新版重点强化多步推理和代理协作。", content)
         self.assertNotIn("不应出现", content)
 
     def test_render_issue_markdown_skips_weekly_repo_section_when_not_monday(self):
@@ -79,7 +96,7 @@ class ReportBuilderTests(unittest.TestCase):
         content = render_issue_markdown(report)
 
         self.assertNotIn("GitHub 仓库热榜推荐", content)
-        self.assertIn("## 🌤️ 韶关天气", content)
+        self.assertIn("## 🌤️ 天气", content)
 
     def test_build_issue_title_matches_morning_template(self):
         self.assertEqual(

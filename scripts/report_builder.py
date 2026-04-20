@@ -24,22 +24,32 @@ def render_issue_markdown(report: Dict) -> str:
     if report.get("weekday") == "monday" and report.get("weekly_repos"):
         lines.extend(["## 🔥 GitHub 仓库热榜推荐", ""])
         for repo in report["weekly_repos"]:
-            lines.append(
-                f"{repo['rank']}. [{repo['name']}]({repo['url']})"
-            )
-            lines.append(f"   - 功能：{repo.get('description', '暂无简介')}")
-            lines.append(f"   - Stars：`{repo.get('stars', 'N/A')}`")
+            lines.append(f"{repo['rank']}. **[{repo['name']}]({repo['url']})** — {repo.get('description', '暂无简介')}")
+            stars_line = f"   - ⭐ 今日新增 {repo.get('today_stars', 'N/A')} | ⭐ 总 Star {repo.get('stars', 'N/A')}"
+            if repo.get("language"):
+                stars_line += f" | {repo['language']}"
+            lines.append(stars_line)
             lines.append(f"   - 排名：`#{repo['rank']}`")
+            if repo.get("recommendation"):
+                lines.append(f"   - 推荐理由：{repo['recommendation']}")
             lines.append("")
         lines.extend(["---", ""])
 
     weather = report["weather"]
     lines.extend(
         [
-            f"## 🌤️ {weather['city']}天气",
+            f"## 🌤️ 天气",
             "",
-            f"**今日**：{weather['summary']} | {weather['temperature']}",
-            f"👕 穿衣建议：{weather['advice']}",
+            "### 今日天气",
+            f"- **温度**: {weather['temperature']}（体感 {weather.get('apparent_temperature', weather['temperature'])}）",
+            f"- **天气**: {weather['summary']}",
+            f"- **湿度**: {weather.get('humidity', 'N/A')}",
+            f"- **风速**: {weather.get('wind_speed', 'N/A')}",
+            "",
+            f"### 明日预报（{weather.get('tomorrow', {}).get('date', '明日')}）",
+            f"- **温度**: {weather.get('tomorrow', {}).get('temperature_range', 'N/A')}",
+            f"- **天气**: {weather.get('tomorrow', {}).get('summary', 'N/A')}",
+            f"- **建议**: {weather.get('tomorrow', {}).get('advice', weather['advice'])}",
             "",
             "---",
             "",
@@ -57,8 +67,12 @@ def render_issue_markdown(report: Dict) -> str:
             lines.append("")
             lines.append(topic["summary"])
             lines.append("")
-            for item in _limit_items(topic.get("items", []), 3):
-                lines.append(f"- [{item['title']}]({item['url']})")
+            for idx, item in enumerate(_limit_items(topic.get("items", []), 3), start=1):
+                lines.append(f"{idx}. **{item['title']}**")
+                if item.get("summary"):
+                    lines.append(f"   - {item['summary']}")
+                if item.get("url"):
+                    lines.append(f"   - 链接: {item['url']}")
             lines.append("")
 
     lines.extend(

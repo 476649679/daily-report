@@ -1,6 +1,6 @@
 import unittest
 
-from scripts.create_issue import issue_exists
+from scripts.create_issue import find_issue_by_title, issue_exists
 
 
 class CreateIssueTests(unittest.TestCase):
@@ -12,6 +12,16 @@ class CreateIssueTests(unittest.TestCase):
 
         self.assertTrue(issue_exists(issues, "个人资讯简报 | 2026-04-20 早间"))
         self.assertFalse(issue_exists(issues, "个人资讯简报 | 2026-04-21 早间"))
+
+    def test_find_issue_by_title_returns_issue_object(self):
+        issues = [
+            {"number": 1, "title": "个人资讯简报 | 2026-04-20 早间"},
+            {"number": 2, "title": "其他日报"},
+        ]
+
+        issue = find_issue_by_title(issues, "个人资讯简报 | 2026-04-20 早间")
+        self.assertEqual(issue["number"], 1)
+        self.assertIsNone(find_issue_by_title(issues, "不存在"))
 
 
 if __name__ == "__main__":
