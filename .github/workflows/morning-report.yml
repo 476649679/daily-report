@@ -1,0 +1,51 @@
+name: Morning Report
+
+on:
+  schedule:
+    - cron: "5 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  build-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout daily-report
+        uses: actions/checkout@v4
+
+      - name: Checkout TrendRadar engine
+        uses: actions/checkout@v4
+        with:
+          repository: 476649679/TrendRadar
+          path: trendradar-engine
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r trendradar-engine/requirements.txt
+
+      - name: Generate report
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          AI_API_BASE: ${{ secrets.AI_API_BASE }}
+          TRENDRADAR_PATH: trendradar-engine
+        run: python scripts/generate_report.py
+
+      - name: Create issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPORT_JSON_PATH: output/report.json
+        run: python scripts/create_issue.py

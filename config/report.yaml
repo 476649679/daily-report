@@ -1,0 +1,58 @@
+city: 韶关
+timezone: Asia/Shanghai
+issue_title_template: "个人资讯简报 | {date} 早间"
+labels:
+  - daily-report
+  - morning
+max_topics: 4
+max_items_per_topic: 3
+weekly_repo_day: monday
+weekly_repo_count: 5
+source_profile: curated-mixed
+max_items_per_hotlist: 5
+
+ai:
+  model: openai/LongCat-Flash-Chat
+  api_base: https://api.longcat.chat/openai/v1
+
+hotlists:
+  - id: zhihu
+    name: 知乎
+  - id: weibo
+    name: 微博
+  - id: tieba
+    name: 贴吧
+  - id: douyin
+    name: 抖音
+  - id: bilibili-hot-search
+    name: bilibili 热搜
+
+english_feeds:
+  - id: hacker-news
+    name: Hacker News
+    url: https://hnrss.org/frontpage
+    max_items: 6
+  - id: github-changelog
+    name: GitHub Changelog
+    url: https://github.blog/changelog/feed/
+    max_items: 5
+  - id: openai-blog
+    name: OpenAI Blog
+    url: https://openai.com/news/rss.xml
+    max_items: 5
+  - id: anthropic-news
+    name: Anthropic News
+    url: https://www.anthropic.com/news/rss.xml
+    max_items: 5
+  - id: google-ai-blog
+    name: Google AI Blog
+    url: https://blog.google/technology/ai/rss/
+    max_items: 5
+  - id: android-developers
+    name: Android Developers Blog
+    url: https://android-developers.googleblog.com/feeds/posts/default?alt=rss
+    max_items: 4
+  - id: simon-willison
+    name: Simon Willison
+    url: https://simonwillison.net/atom/everything/
+    max_items: 4
