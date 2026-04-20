@@ -188,35 +188,39 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
         "candidates": payload_candidates,
     }
 
-    response = requests.post(
-        f"{api_base.rstrip('/')}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "你是日报编辑。请返回 JSON：subtitle, topics, observation。topics 是数组，每项包含 name, summary, items。items 中每项包含 title, url。不要输出 markdown。",
-                },
-                {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
-            ],
-            "temperature": 0.4,
-        },
-        timeout=60,
-    )
-    response.raise_for_status()
-    content = response.json()["choices"][0]["message"]["content"]
     try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        start = content.find("{")
-        end = content.rfind("}")
-        if start != -1 and end != -1:
-            return json.loads(content[start : end + 1])
+        response = requests.post(
+            f"{api_base.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你是日报编辑。请返回 JSON：subtitle, topics, observation。topics 是数组，每项包含 name, summary, items。items 中每项包含 title, url。不要输出 markdown。",
+                    },
+                    {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
+                ],
+                "temperature": 0.4,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            start = content.find("{")
+            end = content.rfind("}")
+            if start != -1 and end != -1:
+                return json.loads(content[start : end + 1])
+    except Exception as exc:
+        print(f"[AI] 汇总失败，回退到规则摘要: {exc}")
         return fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
+    return fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
 
 
 def build_report(config: Dict, today: datetime, candidates: List[Dict], weekly_repos: List[Dict], weather: Dict) -> Dict:

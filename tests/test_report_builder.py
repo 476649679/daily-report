@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch, Mock
 
+from scripts.generate_report import summarize_with_ai
 from scripts.report_builder import build_issue_title, render_issue_markdown
 
 
@@ -84,6 +86,39 @@ class ReportBuilderTests(unittest.TestCase):
             build_issue_title("2026-04-20"),
             "个人资讯简报 | 2026-04-20 早间",
         )
+
+    @patch("scripts.generate_report.requests.post")
+    def test_summarize_with_ai_falls_back_when_ai_request_fails(self, mock_post):
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = Exception("bad request")
+        mock_post.return_value = mock_response
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AI_API_KEY": "x",
+                "AI_MODEL": "test-model",
+                "AI_API_BASE": "https://example.com",
+            },
+            clear=False,
+        ):
+            result = summarize_with_ai(
+                {"max_topics": 3, "max_items_per_topic": 3},
+                [
+                    {
+                        "source": "知乎",
+                        "title": "测试标题",
+                        "url": "https://example.com/1",
+                        "summary": "",
+                    }
+                ],
+                [],
+                {"city": "韶关"},
+                __import__("datetime").datetime(2026, 4, 20, 8, 0, 0),
+            )
+
+        self.assertIn("topics", result)
+        self.assertTrue(result["topics"])
 
 
 if __name__ == "__main__":
