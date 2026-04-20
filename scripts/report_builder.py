@@ -7,7 +7,7 @@ def build_issue_title(date_str: str) -> str:
     return f"个人资讯简报 | {date_str} 早间"
 
 
-def _limit_items(items: List[Dict], max_items: int = 3) -> List[Dict]:
+def _limit_items(items: List[Dict], max_items: int = 5) -> List[Dict]:
     return list(items[:max_items])
 
 
@@ -53,7 +53,57 @@ def render_issue_markdown(report: Dict) -> str:
             "",
             "---",
             "",
-            "## 📰 今日主题精选",
+            "## 📰 新闻资讯",
+            "",
+        ]
+    )
+
+    for section in report.get("news_sections", []):
+        header = f"### {section.get('emoji', '')} {section['name']}".strip()
+        lines.append(header)
+        lines.append("")
+        for idx, item in enumerate(_limit_items(section.get("items", []), 5), start=1):
+            title = item["title"]
+            if item.get("url"):
+                title = f"[{title}]({item['url']})"
+            summary = item.get("summary", "").strip()
+            lines.append(f"{idx}. **{title}**{f' — {summary}' if summary else ''}")
+            if item.get("meta"):
+                lines.append(f"   - {item['meta']}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "---",
+            "",
+            "## 🎮 近期游戏",
+            "",
+        ]
+    )
+
+    games = report.get("games") or []
+    if not games:
+        lines.extend(["近期暂无可用游戏资讯。", ""])
+    else:
+        for idx, item in enumerate(_limit_items(games, 5), start=1):
+            title = item["title"]
+            if item.get("url"):
+                title = f"[{title}]({item['url']})"
+            lines.append(f"{idx}. **{title}** — {item.get('summary', '近期值得关注的游戏动态。')}")
+            meta_parts = []
+            if item.get("platform"):
+                meta_parts.append(f"平台: {item['platform']}")
+            if item.get("release_date"):
+                meta_parts.append(f"发售: {item['release_date']}")
+            if meta_parts:
+                lines.append(f"   - {' | '.join(meta_parts)}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "---",
+            "",
+            "## 🤖 今日主题精选",
             "",
         ]
     )
@@ -67,7 +117,7 @@ def render_issue_markdown(report: Dict) -> str:
             lines.append("")
             lines.append(topic["summary"])
             lines.append("")
-            for idx, item in enumerate(_limit_items(topic.get("items", []), 3), start=1):
+            for idx, item in enumerate(_limit_items(topic.get("items", []), 5), start=1):
                 title = item["title"]
                 if item.get("url"):
                     title = f"[{title}]({item['url']})"

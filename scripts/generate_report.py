@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
+from html import unescape
 from pathlib import Path
 from typing import Dict, Iterable, List
 
 import feedparser
 import requests
 import yaml
+from bs4 import BeautifulSoup
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -117,10 +120,113 @@ def fetch_rss_candidates(feed_configs: List[Dict]) -> List[Dict]:
                     "source_type": "rss",
                     "title": title,
                     "url": link,
-                    "summary": (entry.get("summary") or "").strip(),
+                    "summary": clean_summary_text(entry.get("summary") or entry.get("description") or ""),
                 }
             )
     return candidates
+
+
+def clean_summary_text(raw_text: str) -> str:
+    if not raw_text:
+        return ""
+    text = BeautifulSoup(raw_text, "html.parser").get_text(" ", strip=True)
+    text = unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:220]
+
+
+def fetch_news_section_candidates(feed_configs: List[Dict], section_name: str) -> List[Dict]:
+    items: List[Dict] = []
+    for feed in feed_configs:
+        parsed = feedparser.parse(feed["url"])
+        for entry in parsed.entries[: feed.get("max_items", 6)]:
+            title = (entry.get("title") or "").strip()
+            url = (entry.get("link") or "").strip()
+            if not title or not url:
+                continue
+            items.append(
+                {
+                    "source": feed["name"],
+                    "source_type": "news",
+                    "section": section_name,
+                    "title": title,
+                    "url": url,
+                    "summary": clean_summary_text(entry.get("summary") or entry.get("description") or ""),
+                }
+            )
+    return dedupe_candidates(items)
+
+
+def parse_steam_release_calendar_html(html: str, limit: int = 5) -> List[Dict]:
+    soup = BeautifulSoup(html, "html.parser")
+    items: List[Dict] = []
+    seen = set()
+    for anchor in soup.select("a[href^='/app/']"):
+        href = (anchor.get("href") or "").strip()
+        title = " ".join(anchor.get_text(" ", strip=True).split())
+        if not href or not title or title in seen:
+            continue
+        seen.add(title)
+        items.append(
+            {
+                "source": "Steam 发售日历",
+                "source_type": "game_release",
+                "title": title,
+                "url": f"https://stmstat.com{href}",
+                "summary": "Steam 发售日历中的新近上架作品，可结合新闻热度判断是否值得关注。",
+                "platform": "Steam",
+                "release_date": "待确认",
+            }
+        )
+        if len(items) >= limit:
+            break
+    return items
+
+
+def fetch_game_release_candidates(limit: int = 5) -> List[Dict]:
+    response = requests.get(
+        "https://stmstat.com/games/new-games",
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    return parse_steam_release_calendar_html(response.text, limit=limit)
+
+
+def fetch_game_news_candidates(feed_configs: List[Dict]) -> List[Dict]:
+    items: List[Dict] = []
+    for feed in feed_configs:
+        parsed = feedparser.parse(feed["url"])
+        for entry in parsed.entries[: feed.get("max_items", 5)]:
+            title = (entry.get("title") or "").strip()
+            url = (entry.get("link") or "").strip()
+            if not title or not url:
+                continue
+            items.append(
+                {
+                    "source": feed["name"],
+                    "source_type": "game_news",
+                    "title": title,
+                    "url": url,
+                    "summary": clean_summary_text(entry.get("summary") or entry.get("description") or ""),
+                    "platform": "多平台",
+                    "release_date": "新闻更新",
+                }
+            )
+    return dedupe_candidates(items)
+
+
+def mix_game_candidates(releases: List[Dict], news: List[Dict], limit: int) -> List[Dict]:
+    mixed: List[Dict] = []
+    max_len = max(len(releases), len(news))
+    for idx in range(max_len):
+        if idx < len(releases):
+            mixed.append(releases[idx])
+        if idx < len(news):
+            mixed.append(news[idx])
+        if len(mixed) >= limit:
+            break
+    return mixed[:limit]
 
 
 def fetch_hotlist_candidates(config: Dict, trendradar_path: str) -> List[Dict]:
@@ -192,12 +298,42 @@ def fallback_group_candidates(candidates: List[Dict], max_topics: int, max_items
     }
 
 
-def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[Dict], weather: Dict, today: datetime) -> Dict:
+def fallback_news_sections(news_candidates: Dict[str, List[Dict]], max_items: int) -> List[Dict]:
+    sections = []
+    name_map = {"domestic": ("🇨🇳", "国内新闻"), "international": ("🌍", "国际新闻")}
+    for key in ["domestic", "international"]:
+        emoji, title = name_map[key]
+        sections.append(
+            {
+                "name": title,
+                "emoji": emoji,
+                "items": news_candidates.get(key, [])[:max_items],
+            }
+        )
+    return sections
+
+
+def fallback_games(game_candidates: List[Dict], max_items: int) -> List[Dict]:
+    return game_candidates[:max_items]
+
+
+def summarize_with_ai(
+    config: Dict,
+    candidates: List[Dict],
+    news_candidates: Dict[str, List[Dict]],
+    game_candidates: List[Dict],
+    weekly_repos: List[Dict],
+    weather: Dict,
+    today: datetime,
+) -> Dict:
     api_key = os.environ.get("AI_API_KEY", "")
     model = normalize_model_name(os.environ.get("AI_MODEL", config.get("ai", {}).get("model", "")))
     api_base = os.environ.get("AI_API_BASE", config.get("ai", {}).get("api_base", ""))
     if not (api_key and model and api_base):
-        return fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
+        fallback = fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
+        fallback["news_sections"] = fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))
+        fallback["games"] = fallback_games(game_candidates, config.get("max_items_per_game_section", 5))
+        return fallback
 
     payload_candidates = [
         {
@@ -208,6 +344,29 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
         }
         for item in candidates[:80]
     ]
+    payload_news = {
+        key: [
+            {
+                "source": item["source"],
+                "title": item["title"],
+                "url": item["url"],
+                "summary": item.get("summary", ""),
+            }
+            for item in items[:12]
+        ]
+        for key, items in news_candidates.items()
+    }
+    payload_games = [
+        {
+            "source": item["source"],
+            "title": item["title"],
+            "url": item["url"],
+            "summary": item.get("summary", ""),
+            "platform": item.get("platform", "多平台"),
+            "release_date": item.get("release_date", "待确认"),
+        }
+        for item in game_candidates[:12]
+    ]
     prompt = {
         "date": today.strftime("%Y-%m-%d"),
         "weather": weather,
@@ -215,9 +374,13 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
         "rules": {
             "max_topics": config["max_topics"],
             "max_items_per_topic": config["max_items_per_topic"],
-            "style": "中文简洁、信息密度高、英文内容要翻译成自然中文，每条新闻和每个仓库都要有一句有信息量的中文总结，不能只给链接。",
+            "max_items_per_news_section": config.get("max_items_per_news_section", 5),
+            "max_items_per_game_section": config.get("max_items_per_game_section", 5),
+            "style": "中文简洁、信息密度高、英文内容要翻译成自然中文，每条新闻、游戏和每个仓库都要有一句有信息量的中文总结，不能只给链接。",
         },
-        "candidates": payload_candidates,
+        "topic_candidates": payload_candidates,
+        "news_candidates": payload_news,
+        "game_candidates": payload_games,
     }
 
     try:
@@ -232,7 +395,7 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是日报编辑。请返回 JSON：subtitle, weekly_repos, topics, observation。weekly_repos 是数组，每项包含 name,url,description,stars,today_stars,language,recommendation,rank。topics 是数组，每项包含 name, summary, items。items 中每项包含 title,url,summary。所有英文内容都要翻译成自然中文。不要输出 markdown。",
+                        "content": "你是日报编辑。请返回 JSON：subtitle, weekly_repos, news_sections, games, topics, observation。weekly_repos 是数组，每项包含 name,url,description,stars,today_stars,language,recommendation,rank。news_sections 是数组，固定输出国内新闻和国际新闻两个板块，每项包含 name,emoji,items，items 中每项包含 title,url,summary。games 是数组，每项包含 title,url,summary,platform,release_date。topics 是数组，每项包含 name, summary, items。items 中每项包含 title,url,summary。所有英文内容都要翻译成自然中文。不要输出 markdown。",
                     },
                     {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
                 ],
@@ -251,18 +414,34 @@ def summarize_with_ai(config: Dict, candidates: List[Dict], weekly_repos: List[D
                 return json.loads(content[start : end + 1])
     except Exception as exc:
         print(f"[AI] 汇总失败，回退到规则摘要: {exc}")
-        return fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
-    return fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
+        fallback = fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
+        fallback["news_sections"] = fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))
+        fallback["games"] = fallback_games(game_candidates, config.get("max_items_per_game_section", 5))
+        return fallback
+    fallback = fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
+    fallback["news_sections"] = fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))
+    fallback["games"] = fallback_games(game_candidates, config.get("max_items_per_game_section", 5))
+    return fallback
 
 
-def build_report(config: Dict, today: datetime, candidates: List[Dict], weekly_repos: List[Dict], weather: Dict) -> Dict:
-    curated = summarize_with_ai(config, candidates, weekly_repos, weather, today)
+def build_report(
+    config: Dict,
+    today: datetime,
+    candidates: List[Dict],
+    news_candidates: Dict[str, List[Dict]],
+    game_candidates: List[Dict],
+    weekly_repos: List[Dict],
+    weather: Dict,
+) -> Dict:
+    curated = summarize_with_ai(config, candidates, news_candidates, game_candidates, weekly_repos, weather, today)
     report = {
         "title": build_issue_title(today.strftime("%Y-%m-%d")),
         "datetime": today.strftime("%Y-%m-%d %H:%M"),
         "subtitle": curated.get("subtitle", "为你整理的每日综合资讯精选"),
         "weather": weather,
         "weekly_repos": curated.get("weekly_repos", weekly_repos),
+        "news_sections": curated.get("news_sections", fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))),
+        "games": curated.get("games", fallback_games(game_candidates, config.get("max_items_per_game_section", 5))),
         "topics": curated.get("topics", [])[: config["max_topics"]],
         "observation": curated.get("observation", "今天的看点主要集中在高质量技术源与中文社区热议的交汇处。"),
         "weekday": today.strftime("%A").lower(),
@@ -279,12 +458,25 @@ def main() -> None:
     trendradar_path = os.environ.get("TRENDRADAR_PATH", "trendradar-engine")
     rss_candidates = fetch_rss_candidates(config.get("english_feeds", []))
     hotlist_candidates = fetch_hotlist_candidates(config, trendradar_path)
+    domestic_news = fetch_news_section_candidates(config.get("news_feeds", {}).get("domestic", []), "domestic")
+    international_news = fetch_news_section_candidates(config.get("news_feeds", {}).get("international", []), "international")
+    game_news = fetch_game_news_candidates(config.get("game_news_feeds", []))
+    game_releases = fetch_game_release_candidates(limit=config.get("max_items_per_game_section", 5))
     candidates = dedupe_candidates(rss_candidates + hotlist_candidates)
+    news_candidates = {
+        "domestic": domestic_news,
+        "international": international_news,
+    }
+    game_candidates = mix_game_candidates(
+        game_releases,
+        game_news,
+        limit=max(config.get("max_items_per_game_section", 5) * 2, 10),
+    )
     weekly_repos = []
     if tz_now.strftime("%A").lower() == config.get("weekly_repo_day", "monday"):
         weekly_repos = fetch_github_trending(period="weekly", limit=config.get("weekly_repo_count", 5))
 
-    report = build_report(config, tz_now, candidates, weekly_repos, weather)
+    report = build_report(config, tz_now, candidates, news_candidates, game_candidates, weekly_repos, weather)
 
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)

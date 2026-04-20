@@ -5,11 +5,13 @@ labels:
   - daily-report
   - morning
 max_topics: 4
-max_items_per_topic: 3
+max_items_per_topic: 5
 weekly_repo_day: monday
 weekly_repo_count: 5
 source_profile: curated-mixed
 max_items_per_hotlist: 5
+max_items_per_news_section: 5
+max_items_per_game_section: 5
 
 ai:
   model: openai/LongCat-Flash-Chat
@@ -56,3 +58,29 @@ english_feeds:
     name: Simon Willison
     url: https://simonwillison.net/atom/everything/
     max_items: 4
+
+news_feeds:
+  domestic:
+    - id: people-domestic
+      name: 人民网国内
+      url: http://www.people.com.cn/rss/politics.xml
+      max_items: 8
+    - id: china-news-scroll
+      name: 中新网滚动
+      url: https://www.chinanews.com.cn/rss/scroll-news.xml
+      max_items: 8
+  international:
+    - id: bbc-world
+      name: BBC World
+      url: https://feeds.bbci.co.uk/news/world/rss.xml
+      max_items: 10
+
+game_news_feeds:
+  - id: game-informer
+    name: Game Informer
+    url: https://www.gameinformer.com/rss.xml
+    max_items: 6
+  - id: gamespot
+    name: GameSpot
+    url: https://www.gamespot.com/feeds/mashup/
+    max_items: 6

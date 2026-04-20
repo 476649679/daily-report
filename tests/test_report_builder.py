@@ -38,6 +38,34 @@ class ReportBuilderTests(unittest.TestCase):
                     "recommendation": "适合自动化日报和数据清洗场景。",
                 }
             ],
+            "news_sections": [
+                {
+                    "name": "国内新闻",
+                    "emoji": "🇨🇳",
+                    "items": [
+                        {"title": f"国内新闻{i}", "url": f"https://example.com/cn{i}", "summary": f"国内摘要{i}"}
+                        for i in range(1, 7)
+                    ],
+                },
+                {
+                    "name": "国际新闻",
+                    "emoji": "🌍",
+                    "items": [
+                        {"title": f"国际新闻{i}", "url": f"https://example.com/world{i}", "summary": f"国际摘要{i}"}
+                        for i in range(1, 7)
+                    ],
+                },
+            ],
+            "games": [
+                {
+                    "title": f"游戏{i}",
+                    "url": f"https://example.com/game{i}",
+                    "summary": f"游戏摘要{i}",
+                    "platform": "Steam",
+                    "release_date": "2026-04-20",
+                }
+                for i in range(1, 7)
+            ],
             "topics": [
                 {
                     "name": "AI 模型动态",
@@ -63,11 +91,21 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertIn("适合自动化日报和数据清洗场景。", content)
         self.assertIn("### 今日天气", content)
         self.assertIn("### 明日预报（4月21日）", content)
+        self.assertIn("## 📰 新闻资讯", content)
+        self.assertIn("### 🇨🇳 国内新闻", content)
+        self.assertIn("### 🌍 国际新闻", content)
+        self.assertIn("**[国内新闻1](https://example.com/cn1)**", content)
+        self.assertIn("国内摘要1", content)
+        self.assertNotIn("国内新闻6", content)
+        self.assertIn("## 🎮 近期游戏", content)
+        self.assertIn("**[游戏1](https://example.com/game1)**", content)
+        self.assertIn("平台: Steam", content)
+        self.assertNotIn("游戏6", content)
         self.assertIn("### AI 模型动态", content)
         self.assertIn("**[Claude 新版本](https://example.com/1)**", content)
         self.assertIn("新版重点强化多步推理和代理协作。", content)
         self.assertNotIn("链接: https://example.com/1", content)
-        self.assertNotIn("不应出现", content)
+        self.assertIn("**[不应出现](https://example.com/4)**", content)
 
     def test_render_issue_markdown_skips_weekly_repo_section_when_not_monday(self):
         report = {
@@ -130,6 +168,8 @@ class ReportBuilderTests(unittest.TestCase):
                         "summary": "",
                     }
                 ],
+                {"domestic": [], "international": []},
+                [],
                 [],
                 {"city": "韶关"},
                 __import__("datetime").datetime(2026, 4, 20, 8, 0, 0),
