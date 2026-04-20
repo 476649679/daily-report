@@ -354,7 +354,7 @@ def game_candidate_score(item: Dict) -> int:
     score = 0
     if item.get("source_type") == "game_news":
         score += 100
-    if item.get("source") in {"Game Informer", "GameSpot"}:
+    if str(item.get("source", "")).startswith("Google News"):
         score += 20
     title = item.get("title", "")
     if 4 <= len(title) <= 40:
@@ -641,6 +641,62 @@ def summarize_with_ai(
     return fallback
 
 
+def localize_report_content(report: Dict) -> Dict:
+    api_key = os.environ.get("AI_API_KEY", "")
+    model = normalize_model_name(os.environ.get("AI_MODEL", ""))
+    api_base = os.environ.get("AI_API_BASE", "")
+    if not (api_key and model and api_base):
+        return report
+
+    payload = {
+        "weekly_repos": report.get("weekly_repos", []),
+        "news_sections": report.get("news_sections", []),
+        "games": report.get("games", []),
+        "topics": report.get("topics", []),
+        "observation": report.get("observation", ""),
+    }
+
+    try:
+        response = requests.post(
+            f"{api_base.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你是资讯编辑。请把输入 JSON 中所有英文标题、英文摘要、英文描述翻译成自然中文；已经是中文的内容保持中文优化即可。news_sections、games、topics 中每条 summary 都压缩成一句话，weekly_repos 的 description 和 recommendation 也用简洁中文。保持原有字段和 URL，不要新增字段，不要输出 markdown，只返回 JSON。",
+                    },
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                "temperature": 0.2,
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        try:
+            localized = json.loads(content)
+        except json.JSONDecodeError:
+            start = content.find("{")
+            end = content.rfind("}")
+            if start == -1 or end == -1:
+                return report
+            localized = json.loads(content[start : end + 1])
+
+        merged = {**report}
+        for key in ["weekly_repos", "news_sections", "games", "topics", "observation"]:
+            if key in localized:
+                merged[key] = localized[key]
+        return merged
+    except Exception as exc:
+        print(f"[AI] 翻译整理失败，保留原内容: {exc}")
+        return report
+
+
 def build_report(
     config: Dict,
     today: datetime,
@@ -663,6 +719,7 @@ def build_report(
         "observation": curated.get("observation", "今天的看点主要集中在高质量技术源与中文社区热议的交汇处。"),
         "weekday": today.strftime("%A").lower(),
     }
+    report = localize_report_content(report)
     report["body"] = render_issue_markdown(report)
     report["labels"] = config.get("labels", ["daily-report", "morning"])
     return report

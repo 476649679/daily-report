@@ -94,11 +94,15 @@ news_feeds:
       max_items: 10
 
 game_news_feeds:
-  - id: game-informer
-    name: Game Informer
-    url: https://www.gameinformer.com/rss.xml
-    max_items: 6
-  - id: gamespot
-    name: GameSpot
-    url: https://www.gamespot.com/feeds/mashup/
-    max_items: 6
+  - id: google-news-games
+    name: Google News 游戏
+    url: https://news.google.com/rss/search?q=when:7d+游戏+新闻&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 12
+  - id: google-news-steam
+    name: Google News Steam
+    url: https://news.google.com/rss/search?q=when:7d+Steam+游戏&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 12
+  - id: google-news-console
+    name: Google News 主机游戏
+    url: https://news.google.com/rss/search?q=when:7d+主机游戏&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 12

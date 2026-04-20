@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, Mock
 
-from scripts.generate_report import summarize_with_ai
+from scripts.generate_report import localize_report_content, summarize_with_ai
 from scripts.report_builder import build_issue_title, render_issue_markdown
 
 
@@ -177,6 +177,52 @@ class ReportBuilderTests(unittest.TestCase):
 
         self.assertIn("topics", result)
         self.assertTrue(result["topics"])
+
+    @patch("scripts.generate_report.requests.post")
+    def test_localize_report_content_translates_english_fields(self, mock_post):
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": """{
+                          "weekly_repos": [{"name":"owner/repo","url":"https://github.com/owner/repo","description":"一个高效编程仓库","stars":"1k","today_stars":"100","language":"Python","rank":1,"recommendation":"适合开发者关注。"}],
+                          "news_sections": [{"name":"国际新闻","emoji":"🌍","items":[{"title":"重大国际新闻","url":"https://example.com/world","summary":"国际局势出现重要变化。"}]}],
+                          "games": [{"title":"热门新游","url":"https://example.com/game","summary":"这是一款值得关注的新作。","platform":"多平台","release_date":"新闻更新"}],
+                          "topics": [{"name":"AI动态","summary":"模型更新密集出现。","items":[{"title":"新模型发布","url":"https://example.com/ai","summary":"新模型聚焦推理与效率。"}]}],
+                          "observation": "今天的重点集中在国际局势和AI工具更新。"
+                        }"""
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = mock_response
+
+        report = {
+            "weekly_repos": [{"name": "owner/repo", "url": "https://github.com/owner/repo", "description": "A useful coding repo", "stars": "1k", "today_stars": "100", "language": "Python", "rank": 1}],
+            "news_sections": [{"name": "国际新闻", "emoji": "🌍", "items": [{"title": "Big world news", "url": "https://example.com/world", "summary": "A long english summary."}]}],
+            "games": [{"title": "Hot new game", "url": "https://example.com/game", "summary": "An exciting new title.", "platform": "Multi-platform", "release_date": "News"}],
+            "topics": [{"name": "AI", "summary": "English summary", "items": [{"title": "New model", "url": "https://example.com/ai", "summary": "English item summary"}]}],
+            "observation": "English observation",
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AI_API_KEY": "x",
+                "AI_MODEL": "openai/LongCat-Flash-Chat",
+                "AI_API_BASE": "https://example.com/openai/v1",
+            },
+            clear=False,
+        ):
+            localized = localize_report_content(report)
+
+        self.assertEqual(localized["weekly_repos"][0]["description"], "一个高效编程仓库")
+        self.assertEqual(localized["news_sections"][0]["items"][0]["summary"], "国际局势出现重要变化。")
+        self.assertEqual(localized["games"][0]["summary"], "这是一款值得关注的新作。")
+        self.assertEqual(localized["topics"][0]["items"][0]["summary"], "新模型聚焦推理与效率。")
+        self.assertEqual(localized["observation"], "今天的重点集中在国际局势和AI工具更新。")
 
 
 if __name__ == "__main__":
