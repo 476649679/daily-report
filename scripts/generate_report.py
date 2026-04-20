@@ -250,6 +250,33 @@ def is_english_heavy(text: str) -> bool:
     return ascii_letters > cjk
 
 
+def translate_text_to_zh(text: str) -> str:
+    if not text or not is_english_heavy(text):
+        return text
+    try:
+        response = requests.get(
+            "https://translate.googleapis.com/translate_a/single",
+            params={
+                "client": "gtx",
+                "sl": "auto",
+                "tl": "zh-CN",
+                "dt": "t",
+                "q": text,
+            },
+            timeout=20,
+        )
+        response.raise_for_status()
+        data = response.json()
+        parts = []
+        for part in data[0]:
+            if part and part[0]:
+                parts.append(part[0])
+        translated = "".join(parts).strip()
+        return translated or text
+    except Exception:
+        return text
+
+
 def fetch_news_section_candidates(feed_configs: List[Dict], section_name: str) -> List[Dict]:
     items: List[Dict] = []
     for feed in feed_configs:
@@ -691,10 +718,30 @@ def localize_report_content(report: Dict) -> Dict:
         for key in ["weekly_repos", "news_sections", "games", "topics", "observation"]:
             if key in localized:
                 merged[key] = localized[key]
-        return merged
+        report = merged
     except Exception as exc:
         print(f"[AI] 翻译整理失败，保留原内容: {exc}")
-        return report
+    for repo in report.get("weekly_repos", []):
+        repo["description"] = translate_text_to_zh(repo.get("description", ""))
+        if repo.get("recommendation"):
+            repo["recommendation"] = translate_text_to_zh(repo.get("recommendation", ""))
+    for section in report.get("news_sections", []):
+        section["name"] = translate_text_to_zh(section.get("name", ""))
+        for item in section.get("items", []):
+            item["title"] = translate_text_to_zh(item.get("title", ""))
+            item["summary"] = first_sentence(translate_text_to_zh(item.get("summary", "")))
+    for item in report.get("games", []):
+        item["title"] = translate_text_to_zh(item.get("title", ""))
+        item["summary"] = first_sentence(translate_text_to_zh(item.get("summary", "")))
+        item["platform"] = translate_text_to_zh(item.get("platform", ""))
+    for topic in report.get("topics", []):
+        topic["name"] = translate_text_to_zh(topic.get("name", ""))
+        topic["summary"] = first_sentence(translate_text_to_zh(topic.get("summary", "")))
+        for item in topic.get("items", []):
+            item["title"] = translate_text_to_zh(item.get("title", ""))
+            item["summary"] = first_sentence(translate_text_to_zh(item.get("summary", "")))
+    report["observation"] = first_sentence(translate_text_to_zh(report.get("observation", "")))
+    return report
 
 
 def build_report(

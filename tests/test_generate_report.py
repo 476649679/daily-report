@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock, patch
 
 from scripts.generate_report import (
     curate_game_candidates,
@@ -7,6 +8,7 @@ from scripts.generate_report import (
     mix_game_candidates,
     normalize_model_name,
     parse_steam_release_calendar_html,
+    translate_text_to_zh,
 )
 
 
@@ -166,6 +168,17 @@ class GenerateReportTests(unittest.TestCase):
         curated = curate_news_candidates(items, limit=2, section="domestic")
 
         self.assertEqual([item["title"] for item in curated], ["国务院部署稳外贸稳就业重点工作"])
+
+    @patch("scripts.generate_report.requests.get")
+    def test_translate_text_to_zh_uses_google_translate_fallback(self, mock_get):
+        mock_response = Mock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = [[["这是一个测试", "This is a test", None, None]]]
+        mock_get.return_value = mock_response
+
+        translated = translate_text_to_zh("This is a test")
+
+        self.assertEqual(translated, "这是一个测试")
 
 
 if __name__ == "__main__":
