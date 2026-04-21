@@ -8,6 +8,8 @@ from scripts.generate_report import (
     mix_game_candidates,
     normalize_model_name,
     parse_steam_release_calendar_html,
+    protect_terms_for_translation,
+    restore_protected_terms,
     translate_text_to_zh,
 )
 
@@ -83,18 +85,22 @@ class GenerateReportTests(unittest.TestCase):
             {"title": "Sisters in Sin 🔞", "source_type": "game_release", "summary": "", "source": "Steam 发售日历"},
             {"title": "Draw Steel", "source_type": "game_release", "summary": "", "source": "Steam 发售日历"},
             {"title": "MELFIAS", "source_type": "game_release", "summary": "", "source": "Steam 发售日历"},
+            {"title": "偿愿人游戏下架公告", "source_type": "game_release", "summary": "官方公告", "source": "Steam 发售日历"},
         ]
         news = [
             {"title": "Pragmata Review", "source_type": "game_news", "summary": "Capcom 新作评测", "source": "Game Informer"},
             {"title": "Bloodborne Movie News", "source_type": "game_news", "summary": "影视化动态", "source": "Game Informer"},
+            {"title": "全国游戏研发发行对接大会在合肥召开", "source_type": "game_news", "summary": "行业会议", "source": "Google News 游戏"},
         ]
 
-        items = curate_game_candidates(releases, news, limit=4)
+        items = curate_game_candidates(releases, news, limit=8)
 
-        self.assertEqual(
-            [item["title"] for item in items],
-            ["Pragmata Review", "Draw Steel", "Bloodborne Movie News", "MELFIAS"],
-        )
+        titles = [item["title"] for item in items]
+        self.assertIn("Pragmata Review", titles)
+        self.assertIn("Draw Steel", titles)
+        self.assertIn("Bloodborne Movie News", titles)
+        self.assertNotIn("偿愿人游戏下架公告", titles)
+        self.assertNotIn("全国游戏研发发行对接大会在合肥召开", titles)
 
     def test_curate_news_candidates_prefers_major_and_recent_news(self):
         items = [
@@ -168,6 +174,17 @@ class GenerateReportTests(unittest.TestCase):
         curated = curate_news_candidates(items, limit=2, section="domestic")
 
         self.assertEqual([item["title"] for item in curated], ["国务院部署稳外贸稳就业重点工作"])
+
+    def test_protected_terms_survive_translation_roundtrip(self):
+        protected, placeholders = protect_terms_for_translation("Steam 上的 Draw Steel and GitHub tools")
+        inverse = {value: token for token, value in placeholders.items()}
+        restored = restore_protected_terms(
+            f"在 {inverse['Steam']} 上的 {inverse['Draw Steel']} 和 {inverse['GitHub']} 工具",
+            placeholders,
+        )
+
+        self.assertTrue(any(token in protected for token in placeholders))
+        self.assertEqual(restored, "在 Steam 上的 Draw Steel 和 GitHub 工具")
 
     @patch("scripts.generate_report.requests.get")
     def test_translate_text_to_zh_uses_google_translate_fallback(self, mock_get):

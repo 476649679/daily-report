@@ -7,10 +7,6 @@ def build_issue_title(date_str: str) -> str:
     return f"个人资讯简报 | {date_str} 早间"
 
 
-def _limit_items(items: List[Dict], max_items: int = 5) -> List[Dict]:
-    return list(items[:max_items])
-
-
 def render_issue_markdown(report: Dict) -> str:
     lines: List[str] = [
         f"# {report['title']}",
@@ -21,7 +17,7 @@ def render_issue_markdown(report: Dict) -> str:
         "",
     ]
 
-    if report.get("weekday") == "monday" and report.get("weekly_repos"):
+    if report.get("weekly_repos"):
         lines.extend(["## 🔥 GitHub 仓库热榜推荐", ""])
         for repo in report["weekly_repos"]:
             lines.append(f"{repo['rank']}. **[{repo['name']}]({repo['url']})** — {repo.get('description', '暂无简介')}")
@@ -62,7 +58,7 @@ def render_issue_markdown(report: Dict) -> str:
         header = f"### {section.get('emoji', '')} {section['name']}".strip()
         lines.append(header)
         lines.append("")
-        for idx, item in enumerate(_limit_items(section.get("items", []), 5), start=1):
+        for idx, item in enumerate(section.get("items", []), start=1):
             title = item["title"]
             if item.get("url"):
                 title = f"[{title}]({item['url']})"
@@ -85,7 +81,7 @@ def render_issue_markdown(report: Dict) -> str:
     if not games:
         lines.extend(["近期暂无可用游戏资讯。", ""])
     else:
-        for idx, item in enumerate(_limit_items(games, 5), start=1):
+        for idx, item in enumerate(games, start=1):
             title = item["title"]
             if item.get("url"):
                 title = f"[{title}]({item['url']})"
@@ -117,7 +113,7 @@ def render_issue_markdown(report: Dict) -> str:
             lines.append("")
             lines.append(topic["summary"])
             lines.append("")
-            for idx, item in enumerate(_limit_items(topic.get("items", []), 5), start=1):
+            for idx, item in enumerate(topic.get("items", []), start=1):
                 title = item["title"]
                 if item.get("url"):
                     title = f"[{title}]({item['url']})"

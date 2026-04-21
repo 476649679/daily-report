@@ -109,6 +109,123 @@ INTERNATIONAL_PRIORITY_KEYWORDS = [
     "全球",
 ]
 
+LOW_SIGNAL_GAME_NEWS_KEYWORDS = [
+    "公告",
+    "下架",
+    "停售",
+    "停服",
+    "退款",
+    "维护",
+    "招募",
+    "壁纸",
+    "原声",
+    "配乐",
+    "试玩",
+    "测试资格",
+    "对接会",
+    "对接大会",
+    "峰会",
+    "大会",
+    "会议",
+    "产业大会",
+    "征文",
+    "赛事报名",
+]
+
+MAJOR_GAME_KEYWORDS = [
+    "Grand Theft Auto",
+    "GTA",
+    "血源",
+    "Bloodborne",
+    "Pragmata",
+    "生化危机",
+    "Resident Evil",
+    "艾尔登法环",
+    "Elden Ring",
+    "巫师",
+    "The Witcher",
+    "赛博朋克",
+    "Cyberpunk",
+    "荒野大镖客",
+    "Red Dead",
+    "死亡搁浅",
+    "Death Stranding",
+    "怪物猎人",
+    "Monster Hunter",
+    "最终幻想",
+    "Final Fantasy",
+    "黑神话",
+    "Black Myth",
+    "刺客信条",
+    "Assassin's Creed",
+    "使命召唤",
+    "Call of Duty",
+    "Battlefield",
+    "FIFA",
+    "EA Sports FC",
+    "文明",
+    "Civilization",
+    "暗黑破坏神",
+    "Diablo",
+    "宝可梦",
+    "Pokemon",
+    "塞尔达",
+    "Zelda",
+    "马里奥",
+    "Mario",
+]
+
+PROTECTED_TERMS = [
+    "Steam",
+    "PlayStation",
+    "Xbox",
+    "Nintendo Switch",
+    "PS5",
+    "PS4",
+    "Xbox Series X|S",
+    "GitHub",
+    "OpenAI",
+    "Claude",
+    "Android",
+    "Google News",
+    "BBC",
+    "Le Monde",
+    "GameSpot",
+    "IGN",
+    "Game Informer",
+    "Hacker News",
+    "GTA 6",
+    "Grand Theft Auto VI",
+    "Grand Theft Auto",
+    "Pragmata",
+    "Bloodborne",
+    "Elden Ring",
+    "Monster Hunter",
+    "Resident Evil",
+    "Cyberpunk 2077",
+    "Death Stranding",
+    "Final Fantasy",
+    "Black Myth: Wukong",
+    "Black Myth",
+    "Draw Steel",
+]
+
+TERM_CORRECTIONS = {
+    "蒸汽": "Steam",
+    "拉钢": "Draw Steel",
+    "开放人工智能": "OpenAI",
+}
+
+DOMESTIC_NEWS_MIN_ITEMS = 2
+DOMESTIC_NEWS_MAX_ITEMS = 8
+INTERNATIONAL_NEWS_MIN_ITEMS = 2
+INTERNATIONAL_NEWS_MAX_ITEMS = 8
+GAME_MIN_ITEMS = 3
+GAME_MAX_ITEMS = 8
+GITHUB_REPO_MIN_ITEMS = 3
+GITHUB_REPO_MAX_ITEMS = 8
+TOPIC_ITEMS_MAX = 6
+
 
 def load_config(config_path: str = "config/report.yaml") -> Dict:
     return yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
@@ -250,9 +367,59 @@ def is_english_heavy(text: str) -> bool:
     return ascii_letters > cjk
 
 
+def protect_terms_for_translation(text: str, extra_terms: Iterable[str] | None = None) -> tuple[str, Dict[str, str]]:
+    if not text:
+        return text, {}
+
+    protected = text
+    placeholders: Dict[str, str] = {}
+    terms = sorted(
+        {term for term in [*PROTECTED_TERMS, *(extra_terms or [])] if term},
+        key=len,
+        reverse=True,
+    )
+
+    for term in terms:
+        pattern = re.compile(re.escape(term), re.IGNORECASE)
+
+        def replacer(match, *, _term=term):
+            token = f"ZXQPROTECTTOKEN{len(placeholders)}QXZ"
+            placeholders[token] = match.group(0)
+            return token
+
+        protected = pattern.sub(replacer, protected)
+
+    return protected, placeholders
+
+
+def restore_protected_terms(text: str, placeholders: Dict[str, str]) -> str:
+    restored = text
+    for token, value in placeholders.items():
+        restored = restored.replace(token, value)
+        restored = restored.replace(token.replace("PROTECTTOKEN", "保护令牌"), value)
+    for wrong, correct in TERM_CORRECTIONS.items():
+        restored = restored.replace(wrong, correct)
+    return restored
+
+
+def dynamic_keep_count(scores: List[int], min_items: int, max_items: int, ratio: float, floor: int) -> int:
+    if not scores:
+        return 0
+    top_score = scores[0]
+    threshold = max(int(top_score * ratio), floor)
+    count = 0
+    for score in scores:
+        if count < min_items or score >= threshold:
+            count += 1
+        else:
+            break
+    return min(max(count, min_items), min(max_items, len(scores)))
+
+
 def translate_text_to_zh(text: str) -> str:
     if not text or not is_english_heavy(text):
         return text
+    protected_text, placeholders = protect_terms_for_translation(text)
     try:
         response = requests.get(
             "https://translate.googleapis.com/translate_a/single",
@@ -261,7 +428,7 @@ def translate_text_to_zh(text: str) -> str:
                 "sl": "auto",
                 "tl": "zh-CN",
                 "dt": "t",
-                "q": text,
+                "q": protected_text,
             },
             timeout=20,
         )
@@ -272,9 +439,10 @@ def translate_text_to_zh(text: str) -> str:
             if part and part[0]:
                 parts.append(part[0])
         translated = "".join(parts).strip()
+        translated = restore_protected_terms(translated, placeholders)
         return translated or text
     except Exception:
-        return text
+        return restore_protected_terms(protected_text, placeholders)
 
 
 def fetch_news_section_candidates(feed_configs: List[Dict], section_name: str) -> List[Dict]:
@@ -374,22 +542,39 @@ def mix_game_candidates(releases: List[Dict], news: List[Dict], limit: int) -> L
 
 def is_excluded_game_candidate(item: Dict) -> bool:
     haystack = f"{item.get('title', '')} {item.get('summary', '')}".lower()
-    return any(keyword in haystack for keyword in EXCLUDED_GAME_KEYWORDS)
+    return any(keyword in haystack for keyword in EXCLUDED_GAME_KEYWORDS) or any(
+        keyword in haystack for keyword in [word.lower() for word in LOW_SIGNAL_GAME_NEWS_KEYWORDS]
+    )
 
 
 def game_candidate_score(item: Dict) -> int:
+    haystack = f"{item.get('title', '')} {item.get('summary', '')}".lower()
     score = 0
     if item.get("source_type") == "game_news":
-        score += 100
-    if str(item.get("source", "")).startswith("Google News"):
+        score += 120
+    else:
         score += 20
+    if str(item.get("source", "")).startswith("Google News"):
+        score += 30
+    if item.get("source") == "Steam 发售日历":
+        score += 10
     title = item.get("title", "")
     if 4 <= len(title) <= 40:
-        score += 5
+        score += 10
+    if any(keyword.lower() in haystack for keyword in MAJOR_GAME_KEYWORDS):
+        score += 90
+    if any(keyword.lower() in haystack for keyword in LOW_SIGNAL_GAME_NEWS_KEYWORDS):
+        score -= 120
+    if re.search(r"\b(review|preview|trailer|release date|launch|销量|评测|实机|预告|发售)\b", haystack):
+        score += 40
+    if re.search(r"\b(indie|demo|soundtrack|wallpaper|maintenance|refund)\b", haystack):
+        score -= 60
     if re.search(r"[🔞✨❤♡★☆]", title):
         score -= 50
     if re.search(r"[!@#$%^&*]{2,}", title):
         score -= 20
+    if len(re.findall(r"[A-Z]{3,}", title)) >= 2:
+        score -= 10
     return score
 
 
@@ -406,9 +591,14 @@ def curate_game_candidates(releases: List[Dict], news: List[Dict], limit: int) -
             curated.append(filtered_news[idx])
         if idx < len(filtered_releases):
             curated.append(filtered_releases[idx])
-        if len(curated) >= limit:
+        if len(curated) >= limit * 2:
             break
-    return curated[:limit]
+    curated = dedupe_candidates(curated)
+    curated = [item for item in curated if game_candidate_score(item) >= 40]
+    curated.sort(key=game_candidate_score, reverse=True)
+    scores = [game_candidate_score(item) for item in curated]
+    keep_count = dynamic_keep_count(scores, GAME_MIN_ITEMS, min(limit, GAME_MAX_ITEMS), ratio=0.55, floor=70)
+    return curated[:keep_count]
 
 
 def fetch_hotlist_candidates(config: Dict, trendradar_path: str) -> List[Dict]:
@@ -506,7 +696,12 @@ def curate_news_candidates(items: List[Dict], limit: int, section: str = "") -> 
             continue
         curated.append(normalized)
     curated.sort(key=lambda item: news_candidate_score(item, section=section), reverse=True)
-    return curated[:limit]
+    scores = [news_candidate_score(item, section=section) for item in curated]
+    if section == "domestic":
+        keep_count = dynamic_keep_count(scores, DOMESTIC_NEWS_MIN_ITEMS, min(limit, DOMESTIC_NEWS_MAX_ITEMS), ratio=0.5, floor=80)
+    else:
+        keep_count = dynamic_keep_count(scores, INTERNATIONAL_NEWS_MIN_ITEMS, min(limit, INTERNATIONAL_NEWS_MAX_ITEMS), ratio=0.5, floor=75)
+    return curated[:keep_count]
 
 
 def fallback_group_candidates(candidates: List[Dict], max_topics: int, max_items_per_topic: int) -> Dict:
@@ -527,11 +722,12 @@ def fallback_group_candidates(candidates: List[Dict], max_topics: int, max_items
 
     topics = []
     for name, items in list(buckets.items())[:max_topics]:
+        limited_items = items[: min(max_items_per_topic, TOPIC_ITEMS_MAX)]
         topics.append(
             {
                 "name": name,
                 "summary": f"这一组主要来自{name}相关来源，适合快速浏览当天代表性动态。",
-                "items": items[:max_items_per_topic],
+                "items": limited_items,
             }
         )
 
@@ -561,6 +757,38 @@ def fallback_games(game_candidates: List[Dict], max_items: int) -> List[Dict]:
     return game_candidates[:max_items]
 
 
+def parse_metric_value(raw_value: str) -> int:
+    text = str(raw_value or "").strip().lower().replace(",", "")
+    if not text:
+        return 0
+    match = re.match(r"(\d+(?:\.\d+)?)(k)?", text)
+    if not match:
+        return 0
+    value = float(match.group(1))
+    if match.group(2):
+        value *= 1000
+    return int(value)
+
+
+def github_repo_score(repo: Dict) -> int:
+    score = 0
+    score += parse_metric_value(repo.get("today_stars", ""))
+    score += parse_metric_value(repo.get("stars", "")) // 10
+    rank = int(repo.get("rank", 99))
+    score += max(0, 120 - rank * 10)
+    return score
+
+
+def curate_github_repos(repos: List[Dict], limit: int) -> List[Dict]:
+    ranked = sorted(repos, key=github_repo_score, reverse=True)
+    scores = [github_repo_score(repo) for repo in ranked]
+    keep_count = dynamic_keep_count(scores, GITHUB_REPO_MIN_ITEMS, min(limit, GITHUB_REPO_MAX_ITEMS), ratio=0.45, floor=80)
+    curated = ranked[:keep_count]
+    for idx, repo in enumerate(curated, start=1):
+        repo["rank"] = idx
+    return curated
+
+
 def summarize_with_ai(
     config: Dict,
     candidates: List[Dict],
@@ -577,6 +805,7 @@ def summarize_with_ai(
         fallback = fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
         fallback["news_sections"] = fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))
         fallback["games"] = fallback_games(game_candidates, config.get("max_items_per_game_section", 5))
+        fallback["weekly_repos"] = weekly_repos
         return fallback
 
     payload_candidates = [
@@ -618,9 +847,10 @@ def summarize_with_ai(
         "rules": {
             "max_topics": config["max_topics"],
             "max_items_per_topic": config["max_items_per_topic"],
-            "max_items_per_news_section": config.get("max_items_per_news_section", 5),
-            "max_items_per_game_section": config.get("max_items_per_game_section", 5),
-            "style": "中文简洁、信息密度高、英文内容要翻译成自然中文，每条新闻、游戏和每个仓库都要有一句有信息量的中文总结，不能只给链接。",
+            "max_items_per_news_section": config.get("max_items_per_news_section", DOMESTIC_NEWS_MAX_ITEMS),
+            "max_items_per_game_section": config.get("max_items_per_game_section", GAME_MAX_ITEMS),
+            "max_items_per_repo_section": config.get("weekly_repo_count", GITHUB_REPO_MAX_ITEMS),
+            "style": "中文简洁、信息密度高、英文内容要翻译成自然中文，每条新闻、游戏和每个仓库都要有一句有信息量的中文总结，不能只给链接。条目数按热度动态增减，不要为了凑数硬塞低热度内容。游戏板块只保留认知度高的大型热门游戏。Steam、GitHub、OpenAI、Claude、Android、GTA 6、Pragmata 等专有名词保留原名。",
         },
         "topic_candidates": payload_candidates,
         "news_candidates": payload_news,
@@ -639,7 +869,7 @@ def summarize_with_ai(
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是日报编辑。请返回 JSON：subtitle, weekly_repos, news_sections, games, topics, observation。weekly_repos 是数组，每项包含 name,url,description,stars,today_stars,language,recommendation,rank。news_sections 是数组，固定输出国内新闻和国际新闻两个板块，每项包含 name,emoji,items，items 中每项包含 title,url,summary。games 是数组，每项包含 title,url,summary,platform,release_date。topics 是数组，每项包含 name, summary, items。items 中每项包含 title,url,summary。所有英文内容都要翻译成自然中文。不要输出 markdown。",
+                        "content": "你是日报编辑。请返回 JSON：subtitle, weekly_repos, news_sections, games, topics, observation。weekly_repos 是数组，每项包含 name,url,description,stars,today_stars,language,recommendation,rank。news_sections 是数组，固定输出国内新闻和国际新闻两个板块，每项包含 name,emoji,items，items 中每项包含 title,url,summary。games 是数组，每项包含 title,url,summary,platform,release_date。topics 是数组，每项包含 name, summary, items。items 中每项包含 title,url,summary。所有英文内容都要翻译成自然中文，但 Steam、GitHub、OpenAI、Claude、Android、GTA 6、Pragmata 等专有名词保留原名。每条 summary 压成一句话，不要输出 markdown。",
                     },
                     {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
                 ],
@@ -661,10 +891,12 @@ def summarize_with_ai(
         fallback = fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
         fallback["news_sections"] = fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))
         fallback["games"] = fallback_games(game_candidates, config.get("max_items_per_game_section", 5))
+        fallback["weekly_repos"] = weekly_repos
         return fallback
     fallback = fallback_group_candidates(candidates, config["max_topics"], config["max_items_per_topic"])
     fallback["news_sections"] = fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))
     fallback["games"] = fallback_games(game_candidates, config.get("max_items_per_game_section", 5))
+    fallback["weekly_repos"] = weekly_repos
     return fallback
 
 
@@ -695,7 +927,7 @@ def localize_report_content(report: Dict) -> Dict:
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是资讯编辑。请把输入 JSON 中所有英文标题、英文摘要、英文描述翻译成自然中文；已经是中文的内容保持中文优化即可。news_sections、games、topics 中每条 summary 都压缩成一句话，weekly_repos 的 description 和 recommendation 也用简洁中文。保持原有字段和 URL，不要新增字段，不要输出 markdown，只返回 JSON。",
+                        "content": "你是资讯编辑。请把输入 JSON 中所有英文标题、英文摘要、英文描述翻译成自然中文；已经是中文的内容保持中文优化即可。news_sections、games、topics 中每条 summary 都压缩成一句话，weekly_repos 的 description 和 recommendation 也用简洁中文。Steam、GitHub、OpenAI、Claude、Android、GTA 6、Pragmata 等专有名词保留原名。保持原有字段和 URL，不要新增字段，不要输出 markdown，只返回 JSON。",
                     },
                     {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
                 ],
@@ -744,6 +976,20 @@ def localize_report_content(report: Dict) -> Dict:
     return report
 
 
+def normalize_report_content(report: Dict, config: Dict) -> Dict:
+    normalized = {**report}
+    normalized["weekly_repos"] = curate_github_repos(
+        normalized.get("weekly_repos", []),
+        config.get("weekly_repo_count", GITHUB_REPO_MAX_ITEMS),
+    )
+    normalized_topics = []
+    for topic in normalized.get("topics", [])[: config.get("max_topics", 4)]:
+        topic_items = list(topic.get("items", []))[:TOPIC_ITEMS_MAX]
+        normalized_topics.append({**topic, "items": topic_items})
+    normalized["topics"] = normalized_topics
+    return normalized
+
+
 def build_report(
     config: Dict,
     today: datetime,
@@ -767,6 +1013,7 @@ def build_report(
         "weekday": today.strftime("%A").lower(),
     }
     report = localize_report_content(report)
+    report = normalize_report_content(report, config)
     report["body"] = render_issue_markdown(report)
     report["labels"] = config.get("labels", ["daily-report", "morning"])
     return report
@@ -782,7 +1029,7 @@ def main() -> None:
     domestic_news = fetch_news_section_candidates(config.get("news_feeds", {}).get("domestic", []), "domestic")
     international_news = fetch_news_section_candidates(config.get("news_feeds", {}).get("international", []), "international")
     game_news = fetch_game_news_candidates(config.get("game_news_feeds", []))
-    game_releases = fetch_game_release_candidates(limit=config.get("max_items_per_game_section", 5))
+    game_releases = fetch_game_release_candidates(limit=max(config.get("max_items_per_game_section", GAME_MAX_ITEMS), GAME_MAX_ITEMS))
     candidates = dedupe_candidates(rss_candidates + hotlist_candidates)
     news_candidates = {
         "domestic": domestic_news,
@@ -791,11 +1038,14 @@ def main() -> None:
     game_candidates = curate_game_candidates(
         game_releases,
         game_news,
-        limit=max(config.get("max_items_per_game_section", 5) * 2, 10),
+        limit=max(config.get("max_items_per_game_section", GAME_MAX_ITEMS), GAME_MAX_ITEMS),
     )
     weekly_repos = []
-    if tz_now.strftime("%A").lower() == config.get("weekly_repo_day", "monday"):
-        weekly_repos = fetch_github_trending(period="weekly", limit=config.get("weekly_repo_count", 5))
+    try:
+        repo_candidates = fetch_github_trending(period="daily", limit=max(config.get("weekly_repo_count", GITHUB_REPO_MAX_ITEMS), GITHUB_REPO_MAX_ITEMS))
+        weekly_repos = curate_github_repos(repo_candidates, config.get("weekly_repo_count", GITHUB_REPO_MAX_ITEMS))
+    except Exception as exc:
+        print(f"[GitHub Trending] 抓取失败，跳过该板块: {exc}")
 
     report = build_report(config, tz_now, candidates, news_candidates, game_candidates, weekly_repos, weather)
 

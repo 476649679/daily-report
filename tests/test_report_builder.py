@@ -6,7 +6,7 @@ from scripts.report_builder import build_issue_title, render_issue_markdown
 
 
 class ReportBuilderTests(unittest.TestCase):
-    def test_render_issue_markdown_includes_weekly_repo_section_on_monday(self):
+    def test_render_issue_markdown_includes_github_repo_section_daily(self):
         report = {
             "title": "个人资讯简报 | 2026-04-20 早间",
             "datetime": "2026-04-20 08:00",
@@ -79,7 +79,7 @@ class ReportBuilderTests(unittest.TestCase):
                 }
             ],
             "observation": "今天重点是模型与工具。",
-            "weekday": "monday",
+            "weekday": "tuesday",
         }
 
         content = render_issue_markdown(report)
@@ -96,18 +96,18 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertIn("### 🌍 国际新闻", content)
         self.assertIn("**[国内新闻1](https://example.com/cn1)**", content)
         self.assertIn("国内摘要1", content)
-        self.assertNotIn("国内新闻6", content)
+        self.assertIn("国内新闻6", content)
         self.assertIn("## 🎮 近期游戏", content)
         self.assertIn("**[游戏1](https://example.com/game1)**", content)
         self.assertIn("平台: Steam", content)
-        self.assertNotIn("游戏6", content)
+        self.assertIn("游戏6", content)
         self.assertIn("### AI 模型动态", content)
         self.assertIn("**[Claude 新版本](https://example.com/1)**", content)
         self.assertIn("新版重点强化多步推理和代理协作。", content)
         self.assertNotIn("链接: https://example.com/1", content)
         self.assertIn("**[不应出现](https://example.com/4)**", content)
 
-    def test_render_issue_markdown_skips_weekly_repo_section_when_not_monday(self):
+    def test_render_issue_markdown_skips_github_repo_section_when_no_repos(self):
         report = {
             "title": "个人资讯简报 | 2026-04-21 早间",
             "datetime": "2026-04-21 08:00",
@@ -118,15 +118,7 @@ class ReportBuilderTests(unittest.TestCase):
                 "temperature": "22°C",
                 "advice": "体感舒适",
             },
-            "weekly_repos": [
-                {
-                    "rank": 1,
-                    "name": "owner/repo",
-                    "url": "https://github.com/owner/repo",
-                    "description": "A useful repo",
-                    "stars": "12.3k",
-                }
-            ],
+            "weekly_repos": [],
             "topics": [],
             "observation": "平稳。",
             "weekday": "tuesday",

@@ -59,7 +59,7 @@ def parse_github_trending_html(html: str, limit: int = 5) -> List[Dict]:
     return repos
 
 
-def fetch_github_trending(period: str = "weekly", limit: int = 5) -> List[Dict]:
+def fetch_github_trending(period: str = "daily", limit: int = 5) -> List[Dict]:
     response = requests.get(
         "https://github.com/trending",
         params={"since": period},

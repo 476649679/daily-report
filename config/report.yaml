@@ -5,13 +5,12 @@ labels:
   - daily-report
   - morning
 max_topics: 4
-max_items_per_topic: 5
-weekly_repo_day: monday
-weekly_repo_count: 5
+max_items_per_topic: 6
+weekly_repo_count: 8
 source_profile: curated-mixed
 max_items_per_hotlist: 5
-max_items_per_news_section: 5
-max_items_per_game_section: 5
+max_items_per_news_section: 8
+max_items_per_game_section: 8
 news_freshness_days: 14
 game_news_freshness_days: 21
 
