@@ -6,6 +6,7 @@ import re
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from html import unescape
 from pathlib import Path
 from typing import Dict, Iterable, List
@@ -345,6 +346,15 @@ TERM_CORRECTIONS = {
     "开放人工智能": "OpenAI",
 }
 
+ARTICLE_BLOCKLIST_HOSTS = [
+    "weibo.com",
+    "tieba.baidu.com",
+    "douyin.com",
+    "bilibili.com",
+    "zhihu.com/hot",
+    "zhihu.com/billboard",
+]
+
 DOMESTIC_NEWS_MIN_ITEMS = 2
 DOMESTIC_NEWS_MAX_ITEMS = 8
 INTERNATIONAL_NEWS_MIN_ITEMS = 2
@@ -546,12 +556,139 @@ def first_sentence(summary: str) -> str:
     return sentence[:120]
 
 
+def sentence_chunks(text: str) -> List[str]:
+    chunks = [chunk.strip(" ，,；;。") for chunk in re.split(r"[。！？!?]+", text or "") if chunk.strip()]
+    return [chunk for chunk in chunks if chunk]
+
+
+def extract_article_text_from_html(html: str) -> str:
+    soup = BeautifulSoup(html or "", "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "header", "footer", "nav", "aside", "form"]):
+        tag.decompose()
+
+    selectors = [
+        "article",
+        "main",
+        "[itemprop='articleBody']",
+        ".article-content",
+        ".article-body",
+        ".post-content",
+        ".entry-content",
+        ".content",
+        ".main-content",
+    ]
+    candidates = []
+    for selector in selectors:
+        for node in soup.select(selector):
+            paragraphs = [
+                " ".join(element.get_text(" ", strip=True).split())
+                for element in node.select("p, li")
+                if len(element.get_text(" ", strip=True)) >= 18
+            ]
+            text = " ".join(paragraphs).strip()
+            if len(text) >= 80:
+                candidates.append(text)
+
+    if not candidates:
+        paragraphs = [
+            " ".join(element.get_text(" ", strip=True).split())
+            for element in soup.select("p")
+            if len(element.get_text(" ", strip=True)) >= 18
+        ]
+        candidates = [" ".join(paragraphs).strip()] if paragraphs else []
+
+    if not candidates:
+        return ""
+
+    article_text = max(candidates, key=len)
+    article_text = unescape(re.sub(r"\s+", " ", article_text)).strip()
+    return article_text[:1800]
+
+
+def should_fetch_article_text(item: Dict) -> bool:
+    url = str(item.get("url", "")).strip().lower()
+    if not url.startswith("http"):
+        return False
+    if item.get("source_type") == "hotlist":
+        return False
+    if any(host in url for host in ARTICLE_BLOCKLIST_HOSTS):
+        return False
+    return item.get("source_type") in {"rss", "news", "game_news"} or "news.google.com" in url
+
+
+@lru_cache(maxsize=64)
+def fetch_article_text(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "")
+        if "html" not in content_type and "<html" not in response.text[:200].lower():
+            return ""
+        return extract_article_text_from_html(response.text)
+    except Exception:
+        return ""
+
+
+def summarize_article_text_locally(article_text: str, title: str) -> str:
+    translated = translate_text_to_zh(article_text or "").strip()
+    if not translated:
+        return ""
+
+    sentences = []
+    for chunk in sentence_chunks(translated):
+        cleaned = re.sub(r"^(据[^，。]{0,30}(报道|消息|称|显示)[，,:：]?)", "", chunk).strip()
+        if len(cleaned) < 12:
+            continue
+        if any(token in cleaned for token in ["原标题", "责任编辑", "点击", "更多内容", "返回搜狐"]):
+            continue
+        sentences.append(cleaned)
+
+    if not sentences:
+        return ""
+
+    first = sentences[0]
+    if len(sentences) == 1:
+        return f"{first.rstrip('，,；;。')}。"
+
+    second = next(
+        (
+            sentence
+            for sentence in sentences[1:]
+            if len(sentence) >= 12
+            and sentence != first
+            and re.search(r"因|由于|随后|之后|目前|已经|结果|最终|判决|宣布|正式|将于|合作|因此|起因", sentence)
+        ),
+        "",
+    )
+    if second and len(first) + len(second) <= 88:
+        return f"{first.rstrip('，,；;。')}，{second.rstrip('，,；;。')}。"
+    return f"{first.rstrip('，,；;。')}。"
+
+
 def normalize_entertainment_title(title: str) -> str:
     cleaned = translate_text_to_zh(title or "")
     cleaned = re.sub(r"\s*[-|｜–—]\s*[^-|｜–—]{1,20}$", "", cleaned).strip()
     cleaned = re.sub(r"_[^_]{1,20}$", "", cleaned).strip()
     cleaned = cleaned.replace("： ", "：").replace("  ", " ").strip(" -|｜–—")
     return cleaned
+
+
+def is_low_value_summary(summary: str, title: str) -> bool:
+    normalized_summary = normalize_entertainment_title(summary)
+    normalized_title = normalize_entertainment_title(title)
+    if not normalized_summary:
+        return True
+    if normalized_summary == normalized_title:
+        return True
+    if normalized_title and normalized_title in normalized_summary and len(normalized_summary) <= len(normalized_title) + 18:
+        return True
+    return False
 
 
 def heuristic_entertainment_summary(title: str, section_key: str) -> str:
@@ -873,11 +1010,63 @@ def is_hard_news_item(item: Dict) -> bool:
     return any(keyword.lower() in haystack for keyword in HARD_NEWS_KEYWORDS)
 
 
+def summarize_entertainment_article_with_ai(item: Dict, article_text: str, section_key: str) -> str:
+    api_key = os.environ.get("AI_API_KEY", "")
+    model = normalize_model_name(os.environ.get("AI_MODEL", ""))
+    api_base = os.environ.get("AI_API_BASE", "")
+    if not (api_key and model and api_base and article_text):
+        return ""
+
+    payload = {
+        "title": item.get("title", ""),
+        "source": item.get("source", ""),
+        "section": section_key,
+        "article_text": article_text[:1500],
+    }
+
+    try:
+        response = requests.post(
+            f"{api_base.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "你是娱乐资讯编辑。请根据提供的正文，用一句自然中文概括新闻里最重要的主体、起因和当前结果。不要写网友反应，不要写评论区，不要说'这条内容很火'，不要输出 markdown。Steam、GitHub、OpenAI、Claude、Android、GTA 6、Pragmata 等专有名词保留原名。",
+                    },
+                    {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+                ],
+                "temperature": 0.2,
+            },
+            timeout=45,
+        )
+        response.raise_for_status()
+        content = response.json()["choices"][0]["message"]["content"]
+        return first_sentence(content.strip())
+    except Exception:
+        return ""
+
+
 def build_entertainment_summary(item: Dict, section_key: str) -> str:
-    summary = first_sentence(translate_text_to_zh(item.get("summary", ""))).strip()
-    source = item.get("source", "平台")
     title = normalize_entertainment_title(item.get("title", ""))
-    if summary:
+    source = item.get("source", "平台")
+    article_text = item.get("article_text", "")
+    if not article_text and should_fetch_article_text(item):
+        article_text = fetch_article_text(item.get("url", ""))
+    if article_text:
+        ai_summary = summarize_entertainment_article_with_ai(item, article_text, section_key)
+        if ai_summary:
+            return ai_summary
+        article_summary = summarize_article_text_locally(article_text, title)
+        if article_summary:
+            return article_summary
+
+    summary = first_sentence(translate_text_to_zh(item.get("summary", ""))).strip()
+    if summary and not is_low_value_summary(summary, title):
         return summary
 
     heuristic = heuristic_entertainment_summary(title, section_key)

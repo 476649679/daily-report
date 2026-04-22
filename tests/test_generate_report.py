@@ -9,6 +9,7 @@ from scripts.generate_report import (
     curate_game_candidates,
     curate_news_candidates,
     curate_social_items,
+    extract_article_text_from_html,
     get_edition_settings,
     get_now_in_timezone,
     is_excluded_game_candidate,
@@ -17,11 +18,83 @@ from scripts.generate_report import (
     parse_steam_release_calendar_html,
     protect_terms_for_translation,
     restore_protected_terms,
+    summarize_article_text_locally,
     translate_text_to_zh,
 )
 
 
 class GenerateReportTests(unittest.TestCase):
+    def test_extract_article_text_from_html_prefers_article_body(self):
+        html = """
+        <html>
+          <body>
+            <header>导航</header>
+            <article>
+              <p>王大陆与女友因伪造病历相关案件出庭受审，案件起因指向两人协助他人规避审查。</p>
+              <p>法院随后作出一审判决，两人被判处有期徒刑六个月，当前结果已经正式落地。</p>
+            </article>
+            <footer>版权信息</footer>
+          </body>
+        </html>
+        """
+
+        article_text = extract_article_text_from_html(html)
+
+        self.assertIn("王大陆与女友因伪造病历相关案件出庭受审", article_text)
+        self.assertIn("法院随后作出一审判决", article_text)
+        self.assertNotIn("导航", article_text)
+        self.assertNotIn("版权信息", article_text)
+
+    def test_summarize_article_text_locally_combines_event_and_result(self):
+        article_text = (
+            "王大陆与其女友因涉嫌伪造文书案被法院判处有期徒刑六个月。"
+            "案件起因是两人协助他人规避审查，目前判决已经正式生效。"
+        )
+
+        summary = summarize_article_text_locally(article_text, "王大陆和女友获刑6个月")
+
+        self.assertIn("王大陆", summary)
+        self.assertIn("六个月", summary)
+        self.assertIn("判决已经正式生效", summary)
+        self.assertNotIn("网友", summary)
+
+    def test_build_entertainment_summary_prefers_article_text_over_title_heuristic(self):
+        summary = build_entertainment_summary(
+            {
+                "title": "王大陆和女友获刑6个月",
+                "summary": "",
+                "article_text": (
+                    "王大陆与其女友因涉嫌伪造文书案被法院判处有期徒刑六个月。"
+                    "案件起因是两人协助他人规避审查，目前判决已经正式生效。"
+                ),
+                "source": "Google News 影视剧综",
+            },
+            "social",
+        )
+
+        self.assertIn("王大陆", summary)
+        self.assertIn("六个月", summary)
+        self.assertIn("判决已经正式生效", summary)
+        self.assertNotIn("后续只看执行进展", summary)
+
+    def test_build_entertainment_summary_skips_feed_summary_that_just_repeats_title(self):
+        summary = build_entertainment_summary(
+            {
+                "title": "爱奇艺2026-2027片单重磅发布：70+剧集与10+电影齐上阵，期待值爆棚！ - 搜狐网",
+                "summary": "爱奇艺2026-2027片单重磅发布：70+剧集与10+电影齐上阵，期待值爆棚！ - 搜狐网",
+                "source": "Google News 影视剧综",
+                "source_type": "rss",
+                "url": "https://example.com/story",
+            },
+            "picks",
+        )
+
+        self.assertNotEqual(
+            summary,
+            "爱奇艺2026-2027片单重磅发布：70+剧集与10+电影齐上阵，期待值爆棚！ - 搜狐网。",
+        )
+        self.assertIn("片单", summary)
+
     def test_build_entertainment_summary_uses_title_specific_social_context(self):
         summary = build_entertainment_summary(
             {
