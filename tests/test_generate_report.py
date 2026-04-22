@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from scripts.generate_report import (
     build_edition_report,
+    build_entertainment_summary,
     curate_game_candidates,
     curate_news_candidates,
     curate_social_items,
@@ -21,6 +22,32 @@ from scripts.generate_report import (
 
 
 class GenerateReportTests(unittest.TestCase):
+    def test_build_entertainment_summary_uses_title_specific_social_context(self):
+        summary = build_entertainment_summary(
+            {
+                "title": "王大陆和女友获刑6个月",
+                "summary": "",
+                "source": "微博",
+            },
+            "social",
+        )
+
+        self.assertIn("判决结果", summary)
+        self.assertNotIn("适合中午快速补课", summary)
+
+    def test_build_entertainment_summary_uses_title_specific_game_context(self):
+        summary = build_entertainment_summary(
+            {
+                "title": "Steam 开启中世纪游戏节促销，《黑暗之魂 2》新史低",
+                "summary": "",
+                "source": "Google News Steam",
+            },
+            "games",
+        )
+
+        self.assertIn("折扣", summary)
+        self.assertNotIn("适合快速了解今天的玩家关注点", summary)
+
     def test_get_edition_settings_returns_noon_profile(self):
         config = {
             "editions": {

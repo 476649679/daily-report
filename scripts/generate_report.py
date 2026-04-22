@@ -546,6 +546,45 @@ def first_sentence(summary: str) -> str:
     return sentence[:120]
 
 
+def normalize_entertainment_title(title: str) -> str:
+    cleaned = translate_text_to_zh(title or "")
+    cleaned = re.sub(r"\s*[-|｜–—]\s*[^-|｜–—]{1,20}$", "", cleaned).strip()
+    cleaned = re.sub(r"_[^_]{1,20}$", "", cleaned).strip()
+    cleaned = cleaned.replace("： ", "：").replace("  ", " ").strip(" -|｜–—")
+    return cleaned
+
+
+def heuristic_entertainment_summary(title: str, section_key: str) -> str:
+    normalized_title = normalize_entertainment_title(title)
+
+    title_rules = [
+        (r"获刑|判刑|被判", "讨论焦点在判决结果已经落地，大家更关心这件事后续会怎样影响当事人的口碑和走向。"),
+        (r"退款|退费|押金|维权", "这条热议主要围绕维权和退款争议发酵，讨论点集中在责任归属和处理方式是否合理。"),
+        (r"免费|免单|福利", "吸引大家点开的核心就是福利和门槛，评论区更多是在问入口、真假和能不能薅到。"),
+        (r"涨价|变贵", "这条内容的热度来自价格变动本身，大家主要在讨论会不会继续影响日常消费选择。"),
+        (r"合作|联动|共同开发", "这条话题把跨界合作的想象空间拉满，讨论基本都围绕新玩法和后续落地可能性展开。"),
+        (r"击败|战胜|扳平|绝杀|夺冠", "比赛结果本身就很能带动讨论，大家更关注关键回合、选手表现和后续走势。"),
+        (r"新史低|史低|促销|打折|折扣", "这条内容值得看主要因为折扣力度够大，评论区更像在交流现在到底值不值得入手。"),
+        (r"片单|官宣|常驻|阵容|预告", "大家关注的重点是新项目和阵容安排，热度基本来自对后续上线表现的期待。"),
+        (r"新番|动漫|配音|角色|二创", "这条内容的讨论点更多落在作品角色和圈层热度延续上，适合顺手补一眼。"),
+        (r"直播|主播|UP主|视频", "热度主要来自内容本身适合传播，大家更关心有没有名场面和值不值得点开。"),
+        (r"模型|AI|Cursor|SpaceX", "这条能冲上来，核心还是题材够新又够跨界，讨论基本都围绕它会带来什么新变化。"),
+    ]
+    for pattern, summary in title_rules:
+        if re.search(pattern, normalized_title, re.IGNORECASE):
+            return summary
+
+    if section_key == "social":
+        return f"这条热议主要是因为话题本身够抓眼球，大家在讨论它为什么会突然冲上今天的社媒版面。"
+    if section_key == "memes":
+        return "这个梗能留下来，说明它已经不只是单点吐槽，而是开始往更广的圈层扩散。"
+    if section_key == "games":
+        return "这条游戏动态之所以值得看，是因为它和今天玩家最关心的作品、价格或后续动作直接相关。"
+    if section_key in {"video", "night_picks", "picks"}:
+        return "这条内容更适合碎片时间点开，因为它本身就代表了今天娱乐话题里最容易出圈的一类。"
+    return "这条内容今天讨论度比较靠前，适合快速了解大家正在关注什么。"
+
+
 def is_english_heavy(text: str) -> bool:
     if not text:
         return False
@@ -832,20 +871,24 @@ def is_hard_news_item(item: Dict) -> bool:
 def build_entertainment_summary(item: Dict, section_key: str) -> str:
     summary = first_sentence(translate_text_to_zh(item.get("summary", ""))).strip()
     source = item.get("source", "平台")
-    title = translate_text_to_zh(item.get("title", ""))
+    title = normalize_entertainment_title(item.get("title", ""))
     if summary:
         return summary
 
+    heuristic = heuristic_entertainment_summary(title, section_key)
+    if heuristic:
+        return heuristic
+
     if section_key == "social":
-        return f"这条内容在 {source} 上扩散很快，适合中午快速补课。"
+        return f"这条内容在 {source} 上扩散很快，也把评论区的讨论重点迅速带到了更多人面前。"
     if section_key == "memes":
-        return f"这个梗今天讨论度很高，已经从单点话题扩散到多个平台。"
+        return "这个梗今天讨论度很高，已经从单点话题扩散到多个平台。"
     if section_key == "games":
         if any(keyword.lower() in f"{title} {source}".lower() for keyword in MAJOR_GAME_KEYWORDS):
-            return f"{title} 这条动态更偏高认知游戏热点，今晚值得补一眼。"
-        return f"这条游戏内容讨论度靠前，适合快速了解今天的玩家关注点。"
+            return f"{title} 这条动态更偏高认知游戏热点，讨论焦点集中在它接下来还能不能继续抬高关注度。"
+        return "这条游戏内容讨论度靠前，适合快速了解今天玩家最在意的是新品、价格还是后续更新。"
     if section_key in {"video", "night_picks", "picks"}:
-        return f"这条内容更适合碎片时间点开，看完就能跟上今天的娱乐话题。"
+        return "这条内容更适合碎片时间点开，看完就能跟上今天娱乐话题里最容易出圈的方向。"
     return f"这条内容今天讨论度较高，适合快速浏览。"
 
 
