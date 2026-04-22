@@ -1,9 +1,12 @@
 import unittest
 from unittest.mock import Mock, patch
 
+from datetime import datetime, timezone
+
 from scripts.generate_report import (
     curate_game_candidates,
     curate_news_candidates,
+    get_now_in_timezone,
     is_excluded_game_candidate,
     mix_game_candidates,
     normalize_model_name,
@@ -15,6 +18,13 @@ from scripts.generate_report import (
 
 
 class GenerateReportTests(unittest.TestCase):
+    def test_get_now_in_timezone_uses_configured_timezone(self):
+        utc_now = datetime(2026, 4, 21, 23, 28, tzinfo=timezone.utc)
+
+        localized = get_now_in_timezone("Asia/Shanghai", now=utc_now)
+
+        self.assertEqual(localized.strftime("%Y-%m-%d %H:%M"), "2026-04-22 07:28")
+
     def test_normalize_model_name_strips_provider_prefix_for_raw_openai_endpoint(self):
         self.assertEqual(normalize_model_name("openai/LongCat-Flash-Chat"), "LongCat-Flash-Chat")
         self.assertEqual(normalize_model_name("LongCat-Flash-Chat"), "LongCat-Flash-Chat")

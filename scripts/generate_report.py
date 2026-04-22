@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from html import unescape
 from pathlib import Path
 from typing import Dict, Iterable, List
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import feedparser
 import requests
@@ -244,7 +245,21 @@ def normalize_model_name(model_name: str) -> str:
     return model_name
 
 
-def fetch_weather(city_name: str) -> Dict:
+def get_now_in_timezone(timezone_name: str, now: datetime | None = None) -> datetime:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    try:
+        zone = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        fallback_offsets = {
+            "Asia/Shanghai": timezone(timedelta(hours=8)),
+        }
+        zone = fallback_offsets.get(timezone_name, timezone.utc)
+    return current.astimezone(zone)
+
+
+def fetch_weather(city_name: str, timezone_name: str = "Asia/Shanghai") -> Dict:
     geo = requests.get(
         "https://geocoding-api.open-meteo.com/v1/search",
         params={"name": city_name, "count": 1, "language": "zh", "format": "json"},
@@ -282,7 +297,7 @@ def fetch_weather(city_name: str) -> Dict:
     tomorrow_min = data.get("daily", {}).get("temperature_2m_min", ["N/A", "N/A"])[1]
     humidity_series = data.get("hourly", {}).get("relative_humidity_2m", [])
     humidity = f"{humidity_series[0]}%" if humidity_series else "N/A"
-    tomorrow = today_for_display = datetime.now() + timedelta(days=1)
+    tomorrow = get_now_in_timezone(timezone_name) + timedelta(days=1)
     tomorrow_label = (
         tomorrow.strftime("%m月%d日").lstrip("0").replace("月0", "月")
         if os.name == "nt"
@@ -1021,8 +1036,9 @@ def build_report(
 
 def main() -> None:
     config = load_config()
-    tz_now = datetime.now()
-    weather = fetch_weather(config["city"])
+    timezone_name = config.get("timezone", "Asia/Shanghai")
+    tz_now = get_now_in_timezone(timezone_name)
+    weather = fetch_weather(config["city"], timezone_name=timezone_name)
     trendradar_path = os.environ.get("TRENDRADAR_PATH", "trendradar-engine")
     rss_candidates = fetch_rss_candidates(config.get("english_feeds", []))
     hotlist_candidates = fetch_hotlist_candidates(config, trendradar_path)
