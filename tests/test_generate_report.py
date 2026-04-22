@@ -32,8 +32,10 @@ class GenerateReportTests(unittest.TestCase):
             "social",
         )
 
-        self.assertIn("判决结果", summary)
-        self.assertNotIn("适合中午快速补课", summary)
+        self.assertIn("王大陆和女友", summary)
+        self.assertIn("获刑6个月", summary)
+        self.assertNotIn("大家", summary)
+        self.assertNotIn("讨论", summary)
 
     def test_build_entertainment_summary_uses_title_specific_game_context(self):
         summary = build_entertainment_summary(
@@ -45,8 +47,11 @@ class GenerateReportTests(unittest.TestCase):
             "games",
         )
 
+        self.assertIn("Steam", summary)
         self.assertIn("折扣", summary)
-        self.assertNotIn("适合快速了解今天的玩家关注点", summary)
+        self.assertIn("新史低", summary)
+        self.assertNotIn("大家", summary)
+        self.assertNotIn("讨论", summary)
 
     def test_get_edition_settings_returns_noon_profile(self):
         config = {

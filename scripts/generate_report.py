@@ -556,33 +556,38 @@ def normalize_entertainment_title(title: str) -> str:
 
 def heuristic_entertainment_summary(title: str, section_key: str) -> str:
     normalized_title = normalize_entertainment_title(title)
-
-    title_rules = [
-        (r"获刑|判刑|被判", "讨论焦点在判决结果已经落地，大家更关心这件事后续会怎样影响当事人的口碑和走向。"),
-        (r"退款|退费|押金|维权", "这条热议主要围绕维权和退款争议发酵，讨论点集中在责任归属和处理方式是否合理。"),
-        (r"免费|免单|福利", "吸引大家点开的核心就是福利和门槛，评论区更多是在问入口、真假和能不能薅到。"),
-        (r"涨价|变贵", "这条内容的热度来自价格变动本身，大家主要在讨论会不会继续影响日常消费选择。"),
-        (r"合作|联动|共同开发", "这条话题把跨界合作的想象空间拉满，讨论基本都围绕新玩法和后续落地可能性展开。"),
-        (r"击败|战胜|扳平|绝杀|夺冠", "比赛结果本身就很能带动讨论，大家更关注关键回合、选手表现和后续走势。"),
-        (r"新史低|史低|促销|打折|折扣", "这条内容值得看主要因为折扣力度够大，评论区更像在交流现在到底值不值得入手。"),
-        (r"片单|官宣|常驻|阵容|预告", "大家关注的重点是新项目和阵容安排，热度基本来自对后续上线表现的期待。"),
-        (r"新番|动漫|配音|角色|二创", "这条内容的讨论点更多落在作品角色和圈层热度延续上，适合顺手补一眼。"),
-        (r"直播|主播|UP主|视频", "热度主要来自内容本身适合传播，大家更关心有没有名场面和值不值得点开。"),
-        (r"模型|AI|Cursor|SpaceX", "这条能冲上来，核心还是题材够新又够跨界，讨论基本都围绕它会带来什么新变化。"),
-    ]
-    for pattern, summary in title_rules:
-        if re.search(pattern, normalized_title, re.IGNORECASE):
-            return summary
+    if re.search(r"获刑|判刑|被判", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，核心结果是判决已经落地，后续只看执行进展和当事人回应。"
+    if re.search(r"退款|退费|押金|维权", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，起因多半是退款或赔付争议，结果是责任归属和处理方式被摆到台面上。"
+    if re.search(r"免费|免单|福利", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，核心信息就是福利已经给出，接下来只看领取门槛和活动入口。"
+    if re.search(r"涨价|变贵", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，结果是相关消费成本出现变化，后续就看这次调整会不会继续扩大。"
+    if re.search(r"合作|联动|共同开发", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，起因是双方要把资源或能力接到一起，结果就是合作本身成了这条新闻的最大看点。"
+    if re.search(r"击败|战胜|扳平|绝杀|夺冠", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，结果是比赛形势已经变化，接下来最值得看的是后续赛程和排名走向。"
+    if re.search(r"新史低|史低|促销|打折|折扣", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，核心结果就是折扣和新史低已经摆出来，现在能直接判断这一轮值不值得入手。"
+    if re.search(r"片单|官宣|常驻|阵容|预告", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，起因是新项目和阵容安排公开，结果就是后续上线节奏和成片表现被提前拉进关注范围。"
+    if re.search(r"新番|动漫|配音|角色|二创", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，这条的主体是作品、角色或配音动向，结果是相关圈层内容还会继续发酵。"
+    if re.search(r"直播|主播|UP主|视频", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，核心看点落在视频或直播内容本身，结果就是这条很适合直接点开看正片。"
+    if re.search(r"模型|AI|Cursor|SpaceX", normalized_title, re.IGNORECASE):
+        return f"{normalized_title}，起因是新技术或新合作落地，结果是这项变化本身已经足够构成今天的看点。"
 
     if section_key == "social":
-        return f"这条热议主要是因为话题本身够抓眼球，大家在讨论它为什么会突然冲上今天的社媒版面。"
+        return f"{normalized_title}，这条新闻的主体和结果已经比较明确，顺着标题就能快速抓住今天发生了什么。"
     if section_key == "memes":
-        return "这个梗能留下来，说明它已经不只是单点吐槽，而是开始往更广的圈层扩散。"
+        return f"{normalized_title}，这条梗的主体很明确，结果是它已经从单点话题变成了今天能留下来的固定梗。"
     if section_key == "games":
-        return "这条游戏动态之所以值得看，是因为它和今天玩家最关心的作品、价格或后续动作直接相关。"
+        return f"{normalized_title}，这条游戏动态的结果已经落在作品、价格或后续动作上，直接看这一句就能知道重点。"
     if section_key in {"video", "night_picks", "picks"}:
-        return "这条内容更适合碎片时间点开，因为它本身就代表了今天娱乐话题里最容易出圈的一类。"
-    return "这条内容今天讨论度比较靠前，适合快速了解大家正在关注什么。"
+        return f"{normalized_title}，这条内容的主体和看点都比较直接，适合碎片时间快速补完。"
+    return f"{normalized_title}，这条内容的主体、起因和结果都比较直接，适合快速看结论。"
 
 
 def is_english_heavy(text: str) -> bool:
