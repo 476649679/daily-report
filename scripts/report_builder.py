@@ -40,8 +40,7 @@ def render_entertainment_markdown(report: Dict) -> str:
             title = item["title"]
             if item.get("url"):
                 title = f"[{title}]({item['url']})"
-            summary = item.get("summary", "").strip()
-            lines.append(f"{idx}. **{title}**{f' — {summary}' if summary else ''}")
+            lines.append(f"{idx}. **{title}**")
             if item.get("meta"):
                 lines.append(f"   - {item['meta']}")
         lines.append("")

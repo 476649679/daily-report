@@ -185,6 +185,8 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertIn("## 📱 社媒热议", content)
         self.assertIn("## 🤣 今日热梗", content)
         self.assertIn("**[微博热议话题](https://example.com/social)**", content)
+        self.assertNotIn("这条话题在多个平台持续发酵", content)
+        self.assertNotIn("今天讨论度最高的梗图和二创集中在这条线上", content)
         self.assertIn("## 💡 午间观察", content)
 
     def test_render_issue_markdown_uses_evening_entertainment_layout(self):
@@ -228,6 +230,8 @@ class ReportBuilderTests(unittest.TestCase):
         self.assertIn("## 🎮 晚间游戏热点", content)
         self.assertIn("## 🌙 今夜玩点啥", content)
         self.assertIn("来源：Google News 游戏", content)
+        self.assertNotIn("这是今晚最值得点进去看的大型游戏热点", content)
+        self.assertNotIn("如果只想睡前轻松刷一条", content)
         self.assertIn("## 💡 夜间观察", content)
 
     @patch("scripts.generate_report.requests.post")
