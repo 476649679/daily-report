@@ -3,11 +3,67 @@ from __future__ import annotations
 from typing import Dict, List
 
 
-def build_issue_title(date_str: str) -> str:
-    return f"个人资讯简报 | {date_str} 早间"
+TITLE_TEMPLATES = {
+    "morning": "个人资讯简报 | {date} 早间",
+    "noon": "午间轻松报 | {date}",
+    "evening": "夜间玩乐报 | {date}",
+}
+
+
+def build_issue_title(date_str: str, edition: str = "morning", template: str | None = None) -> str:
+    title_template = template or TITLE_TEMPLATES.get(edition, TITLE_TEMPLATES["morning"])
+    return title_template.format(date=date_str)
+
+
+def render_entertainment_markdown(report: Dict) -> str:
+    observation_title = report.get("observation_title") or (
+        "午间观察" if report.get("edition") == "noon" else "夜间观察"
+    )
+    lines: List[str] = [
+        f"# {report['title']}",
+        "",
+        f"> {report.get('subtitle', '今日娱乐休闲精选')}",
+        "",
+        "---",
+        "",
+    ]
+
+    for section in report.get("sections", []):
+        lines.append(f"## {section.get('emoji', '').strip()} {section['name']}".strip())
+        lines.append("")
+        items = section.get("items", [])
+        if not items:
+            lines.append("暂无值得收录的高热度内容。")
+            lines.append("")
+            continue
+        for idx, item in enumerate(items, start=1):
+            title = item["title"]
+            if item.get("url"):
+                title = f"[{title}]({item['url']})"
+            summary = item.get("summary", "").strip()
+            lines.append(f"{idx}. **{title}**{f' — {summary}' if summary else ''}")
+            if item.get("meta"):
+                lines.append(f"   - {item['meta']}")
+        lines.append("")
+
+    lines.extend(
+        [
+            "---",
+            "",
+            f"## 💡 {observation_title}",
+            "",
+            report.get("observation", "今天的轻松内容主要集中在高热度话题和适合碎片时间消费的娱乐项目上。"),
+            "",
+        ]
+    )
+
+    return "\n".join(lines).strip() + "\n"
 
 
 def render_issue_markdown(report: Dict) -> str:
+    if report.get("edition") in {"noon", "evening"}:
+        return render_entertainment_markdown(report)
+
     lines: List[str] = [
         f"# {report['title']}",
         "",

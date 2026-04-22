@@ -4,8 +4,11 @@ from unittest.mock import Mock, patch
 from datetime import datetime, timezone
 
 from scripts.generate_report import (
+    build_edition_report,
     curate_game_candidates,
     curate_news_candidates,
+    curate_social_items,
+    get_edition_settings,
     get_now_in_timezone,
     is_excluded_game_candidate,
     mix_game_candidates,
@@ -18,6 +21,74 @@ from scripts.generate_report import (
 
 
 class GenerateReportTests(unittest.TestCase):
+    def test_get_edition_settings_returns_noon_profile(self):
+        config = {
+            "editions": {
+                "noon": {
+                    "title_template": "午间轻松报 | {date}",
+                    "labels": ["daily-report", "noon", "entertainment"],
+                    "include_weather": False,
+                }
+            }
+        }
+
+        settings = get_edition_settings(config, "noon")
+
+        self.assertEqual(settings["title_template"], "午间轻松报 | {date}")
+        self.assertEqual(settings["labels"], ["daily-report", "noon", "entertainment"])
+        self.assertFalse(settings["include_weather"])
+
+    def test_curate_social_items_filters_hard_news_and_keeps_entertainment_topics(self):
+        items = [
+            {"title": "微博热议：综艺名场面冲上热搜", "summary": "多个平台都在玩这个梗。", "source": "微博", "url": "https://example.com/1"},
+            {"title": "国际油价因中东局势上涨", "summary": "宏观市场持续波动。", "source": "微博", "url": "https://example.com/2"},
+            {"title": "国台办：统一是台湾的唯一前途", "summary": "严肃时政表态。", "source": "抖音", "url": "https://example.com/4"},
+            {"title": "B站热议：新番二创刷屏", "summary": "讨论度在年轻用户里快速扩散。", "source": "bilibili 热搜", "url": "https://example.com/3"},
+        ]
+
+        curated = curate_social_items(items, min_items=2, max_items=6)
+
+        self.assertEqual([item["title"] for item in curated], ["微博热议：综艺名场面冲上热搜", "B站热议：新番二创刷屏"])
+        self.assertNotIn("国际油价因中东局势上涨", [item["title"] for item in curated])
+        self.assertNotIn("国台办：统一是台湾的唯一前途", [item["title"] for item in curated])
+
+    def test_build_edition_report_omits_weather_for_noon(self):
+        config = {
+            "editions": {
+                "noon": {
+                    "title_template": "午间轻松报 | {date}",
+                    "labels": ["daily-report", "noon", "entertainment"],
+                    "subtitle": "中午适合快速刷一遍的娱乐休闲精选",
+                    "include_weather": False,
+                    "observation_title": "午间观察",
+                    "sections": [
+                        {"key": "social", "name": "社媒热议", "emoji": "📱"},
+                    ],
+                }
+            }
+        }
+
+        report = build_edition_report(
+            config=config,
+            edition="noon",
+            today=datetime(2026, 4, 22, 12, 0, tzinfo=timezone.utc),
+            weather={"summary": "晴"},
+            sections=[
+                {
+                    "name": "社媒热议",
+                    "emoji": "📱",
+                    "items": [{"title": "微博热议话题", "url": "https://example.com/1", "summary": "这条中午最值得点开。"}],
+                }
+            ],
+            weekly_repos=[],
+            observation="今天中午的娱乐讨论明显更偏短视频和热梗。",
+        )
+
+        self.assertEqual(report["title"], "午间轻松报 | 2026-04-22")
+        self.assertEqual(report["labels"], ["daily-report", "noon", "entertainment"])
+        self.assertFalse(report["include_weather"])
+        self.assertNotIn("天气", report["body"])
+
     def test_get_now_in_timezone_uses_configured_timezone(self):
         utc_now = datetime(2026, 4, 21, 23, 28, tzinfo=timezone.utc)
 

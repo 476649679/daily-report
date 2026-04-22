@@ -1,8 +1,8 @@
-name: Morning Report
+name: Evening Report
 
 on:
   schedule:
-    - cron: "0 23 * * *"
+    - cron: "0 13 * * *"
   workflow_dispatch:
 
 permissions:
@@ -41,7 +41,7 @@ jobs:
           AI_MODEL: ${{ secrets.AI_MODEL }}
           AI_API_BASE: ${{ secrets.AI_API_BASE }}
           TRENDRADAR_PATH: trendradar-engine
-          EDITION: morning
+          EDITION: evening
         run: python scripts/generate_report.py
 
       - name: Create issue

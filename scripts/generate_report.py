@@ -61,6 +61,34 @@ LOW_SIGNAL_NEWS_KEYWORDS = [
     "直播预告",
 ]
 
+HARD_NEWS_KEYWORDS = [
+    "地震",
+    "战争",
+    "袭击",
+    "停火",
+    "冲突",
+    "关税",
+    "油价",
+    "制裁",
+    "央行",
+    "美联储",
+    "国务院",
+    "外交部",
+    "宏观",
+    "财政",
+    "国债",
+    "股市",
+    "A股",
+    "美股",
+    "港股",
+    "原油",
+    "枪击",
+    "空袭",
+    "政策",
+    "灾害",
+    "灾难",
+]
+
 MAJOR_NEWS_KEYWORDS = [
     "特朗普",
     "伊朗",
@@ -211,6 +239,106 @@ PROTECTED_TERMS = [
     "Draw Steel",
 ]
 
+ENTERTAINMENT_BOOST_KEYWORDS = [
+    "热搜",
+    "爆火",
+    "刷屏",
+    "热议",
+    "整活",
+    "名场面",
+    "二创",
+    "玩梗",
+    "综艺",
+    "剧集",
+    "电影",
+    "动画",
+    "新番",
+    "直播",
+    "主播",
+    "视频",
+]
+
+MEME_KEYWORDS = [
+    "梗",
+    "表情包",
+    "二创",
+    "名场面",
+    "抽象",
+    "整活",
+    "玩梗",
+    "吐槽",
+    "meme",
+]
+
+VIDEO_KEYWORDS = [
+    "视频",
+    "短片",
+    "直播",
+    "UP主",
+    "主播",
+    "B站",
+    "抖音",
+    "名场面",
+    "综艺",
+    "剧集",
+    "电影",
+    "动漫",
+    "新番",
+]
+
+SERIOUS_SOCIAL_KEYWORDS = [
+    "烈士",
+    "志愿军",
+    "国台办",
+    "统一",
+    "英雄",
+    "回家",
+    "国务院",
+    "国民经济",
+    "服务业",
+    "外交",
+    "事故",
+    "隐患",
+    "安全",
+    "时政",
+    "央视",
+    "网警",
+]
+
+LIGHT_ENTERTAINMENT_KEYWORDS = [
+    "综艺",
+    "剧",
+    "电影",
+    "演员",
+    "明星",
+    "恋情",
+    "乐队",
+    "演唱会",
+    "直播",
+    "UP主",
+    "主播",
+    "球员",
+    "比赛",
+    "新番",
+    "动漫",
+    "二创",
+    "名场面",
+    "游戏",
+]
+
+PROMOTIONAL_KEYWORDS = [
+    "招商",
+    "开幕",
+    "发布会",
+    "官宣海报",
+    "预热",
+    "报名",
+    "福利",
+    "抽奖",
+    "联动活动",
+    "品牌活动",
+]
+
 TERM_CORRECTIONS = {
     "蒸汽": "Steam",
     "拉钢": "Draw Steel",
@@ -227,9 +355,53 @@ GITHUB_REPO_MIN_ITEMS = 3
 GITHUB_REPO_MAX_ITEMS = 8
 TOPIC_ITEMS_MAX = 6
 
+DEFAULT_EDITION_SETTINGS = {
+    "morning": {
+        "title_template": "个人资讯简报 | {date} 早间",
+        "labels": ["daily-report", "morning"],
+        "subtitle": "为你整理的每日综合资讯精选",
+        "include_weather": True,
+        "observation_title": "今日观察",
+    },
+    "noon": {
+        "title_template": "午间轻松报 | {date}",
+        "labels": ["daily-report", "noon", "entertainment"],
+        "subtitle": "中午适合快速刷一遍的娱乐休闲精选",
+        "include_weather": False,
+        "observation_title": "午间观察",
+        "sections": [
+            {"key": "social", "name": "社媒热议", "emoji": "📱"},
+            {"key": "memes", "name": "今日热梗", "emoji": "🤣"},
+            {"key": "games", "name": "轻量游戏动向", "emoji": "🎮"},
+            {"key": "picks", "name": "午间一刷", "emoji": "✨"},
+        ],
+    },
+    "evening": {
+        "title_template": "夜间玩乐报 | {date}",
+        "labels": ["daily-report", "evening", "entertainment"],
+        "subtitle": "今晚值得一口气看完的轻松内容和热门游戏动向",
+        "include_weather": False,
+        "observation_title": "夜间观察",
+        "sections": [
+            {"key": "games", "name": "晚间游戏热点", "emoji": "🎮"},
+            {"key": "video", "name": "视频与直播热议", "emoji": "📺"},
+            {"key": "night_picks", "name": "今夜玩点啥", "emoji": "🌙"},
+            {"key": "memes", "name": "今日热梗回顾", "emoji": "🤣"},
+        ],
+    },
+}
+
 
 def load_config(config_path: str = "config/report.yaml") -> Dict:
     return yaml.safe_load(Path(config_path).read_text(encoding="utf-8"))
+
+
+def get_edition_settings(config: Dict, edition: str) -> Dict:
+    base = dict(DEFAULT_EDITION_SETTINGS.get(edition, DEFAULT_EDITION_SETTINGS["morning"]))
+    override = config.get("editions", {}).get(edition, {})
+    base.update(override)
+    base["edition"] = edition
+    return base
 
 
 def load_trendradar_fetcher(trendradar_path: str):
@@ -616,10 +788,10 @@ def curate_game_candidates(releases: List[Dict], news: List[Dict], limit: int) -
     return curated[:keep_count]
 
 
-def fetch_hotlist_candidates(config: Dict, trendradar_path: str) -> List[Dict]:
+def fetch_hotlist_candidates(config: Dict, trendradar_path: str, hotlist_configs: List[Dict] | None = None) -> List[Dict]:
     DataFetcher = load_trendradar_fetcher(trendradar_path)
     fetcher = DataFetcher()
-    ids = [(item["id"], item["name"]) for item in config.get("hotlists", [])]
+    ids = [(item["id"], item["name"]) for item in (hotlist_configs or config.get("hotlists", []))]
     results, id_to_name, _ = fetcher.crawl_websites(ids, request_interval=100)
     candidates: List[Dict] = []
     for platform_id, titles in results.items():
@@ -650,6 +822,187 @@ def dedupe_candidates(items: Iterable[Dict]) -> List[Dict]:
         seen.add(key)
         deduped.append(item)
     return deduped
+
+
+def is_hard_news_item(item: Dict) -> bool:
+    haystack = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+    return any(keyword.lower() in haystack for keyword in HARD_NEWS_KEYWORDS)
+
+
+def build_entertainment_summary(item: Dict, section_key: str) -> str:
+    summary = first_sentence(translate_text_to_zh(item.get("summary", ""))).strip()
+    source = item.get("source", "平台")
+    title = translate_text_to_zh(item.get("title", ""))
+    if summary:
+        return summary
+
+    if section_key == "social":
+        return f"这条内容在 {source} 上扩散很快，适合中午快速补课。"
+    if section_key == "memes":
+        return f"这个梗今天讨论度很高，已经从单点话题扩散到多个平台。"
+    if section_key == "games":
+        if any(keyword.lower() in f"{title} {source}".lower() for keyword in MAJOR_GAME_KEYWORDS):
+            return f"{title} 这条动态更偏高认知游戏热点，今晚值得补一眼。"
+        return f"这条游戏内容讨论度靠前，适合快速了解今天的玩家关注点。"
+    if section_key in {"video", "night_picks", "picks"}:
+        return f"这条内容更适合碎片时间点开，看完就能跟上今天的娱乐话题。"
+    return f"这条内容今天讨论度较高，适合快速浏览。"
+
+
+def entertainment_candidate_score(item: Dict, section_key: str) -> int:
+    haystack = f"{item.get('title', '')} {item.get('summary', '')}".lower()
+    if is_hard_news_item(item):
+        return -200
+
+    score = 0
+    source = item.get("source", "")
+    source_type = item.get("source_type", "")
+
+    source_scores = {
+        "微博": 70,
+        "抖音": 68,
+        "bilibili 热搜": 66,
+        "贴吧": 52,
+        "知乎": 22,
+    }
+    score += source_scores.get(source, 12)
+
+    if source_type == "hotlist":
+        score += 25
+    if source_type == "game_news":
+        score += 35
+    if source_type == "game_release":
+        score += 18
+    if source_type == "rss":
+        score += 20
+
+    if any(keyword.lower() in haystack for keyword in ENTERTAINMENT_BOOST_KEYWORDS):
+        score += 38
+    if any(keyword.lower() in haystack for keyword in PROMOTIONAL_KEYWORDS):
+        score -= 45
+    if any(keyword.lower() in haystack for keyword in SERIOUS_SOCIAL_KEYWORDS):
+        score -= 120
+
+    if section_key == "social":
+        if source in {"微博", "抖音", "bilibili 热搜", "贴吧"}:
+            score += 45
+        if any(keyword.lower() in haystack for keyword in MEME_KEYWORDS):
+            score += 15
+        if not any(keyword.lower() in haystack for keyword in LIGHT_ENTERTAINMENT_KEYWORDS + MEME_KEYWORDS + VIDEO_KEYWORDS):
+            score -= 35
+    elif section_key == "memes":
+        if any(keyword.lower() in haystack for keyword in MEME_KEYWORDS):
+            score += 60
+        if source in {"微博", "抖音", "bilibili 热搜", "贴吧"}:
+            score += 20
+        if not any(keyword.lower() in haystack for keyword in MEME_KEYWORDS + LIGHT_ENTERTAINMENT_KEYWORDS):
+            score -= 50
+    elif section_key == "games":
+        if any(keyword.lower() in haystack for keyword in MAJOR_GAME_KEYWORDS):
+            score += 90
+        if any(token in source for token in ["游戏", "Steam", "主机"]):
+            score += 35
+        if any(keyword.lower() in haystack for keyword in LOW_SIGNAL_GAME_NEWS_KEYWORDS):
+            score -= 80
+    elif section_key == "video":
+        if any(keyword.lower() in haystack for keyword in VIDEO_KEYWORDS):
+            score += 55
+        if source in {"抖音", "bilibili 热搜", "微博"}:
+            score += 20
+        if not any(keyword.lower() in haystack for keyword in VIDEO_KEYWORDS + LIGHT_ENTERTAINMENT_KEYWORDS + MEME_KEYWORDS):
+            score -= 55
+    elif section_key in {"night_picks", "picks"}:
+        if any(keyword.lower() in haystack for keyword in VIDEO_KEYWORDS + ENTERTAINMENT_BOOST_KEYWORDS):
+            score += 30
+        if any(keyword.lower() in haystack for keyword in MAJOR_GAME_KEYWORDS):
+            score += 25
+        if not any(keyword.lower() in haystack for keyword in VIDEO_KEYWORDS + LIGHT_ENTERTAINMENT_KEYWORDS + MAJOR_GAME_KEYWORDS + MEME_KEYWORDS):
+            score -= 60
+
+    return score
+
+
+def curate_social_items(items: List[Dict], min_items: int = 3, max_items: int = 8) -> List[Dict]:
+    curated = [item for item in items if entertainment_candidate_score(item, "social") > 0]
+    curated.sort(key=lambda item: entertainment_candidate_score(item, "social"), reverse=True)
+    scores = [entertainment_candidate_score(item, "social") for item in curated]
+    keep_count = dynamic_keep_count(scores, min_items, max_items, ratio=0.55, floor=65)
+    return curated[:keep_count]
+
+
+def pick_entertainment_items(
+    candidates: List[Dict],
+    section_key: str,
+    used_keys: set[tuple[str, str]],
+    min_items: int = 3,
+    max_items: int = 8,
+) -> List[Dict]:
+    ranked = []
+    for item in candidates:
+        key = (item.get("title", ""), item.get("url", ""))
+        if key in used_keys:
+            continue
+        score = entertainment_candidate_score(item, section_key)
+        if score <= 0:
+            continue
+        ranked.append((score, item))
+
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    scores = [score for score, _ in ranked]
+    if not scores:
+        return []
+    keep_count = dynamic_keep_count(scores, min_items, max_items, ratio=0.55, floor=55)
+    selected = []
+    for _, item in ranked[:keep_count]:
+        key = (item.get("title", ""), item.get("url", ""))
+        used_keys.add(key)
+        selected.append(
+            {
+                "title": translate_text_to_zh(item.get("title", "")),
+                "url": item.get("url", ""),
+                "summary": build_entertainment_summary(item, section_key),
+                "meta": f"来源：{item.get('source', '资讯源')}",
+            }
+        )
+    return selected
+
+
+def build_entertainment_observation(edition: str, sections: List[Dict]) -> str:
+    populated = [section["name"] for section in sections if section.get("items")]
+    if not populated:
+        return "这一期没有足够高热度的娱乐休闲内容，宁可少发也不硬凑。"
+    if edition == "noon":
+        return f"今天中午最有存在感的是{'、'.join(populated[:2])}，整体更偏适合碎片时间快速刷完的轻松内容。"
+    return f"今晚的重心集中在{'、'.join(populated[:2])}，更适合下班后或睡前集中补完。"
+
+
+def build_edition_report(
+    config: Dict,
+    edition: str,
+    today: datetime,
+    weather: Dict | None,
+    sections: List[Dict],
+    weekly_repos: List[Dict],
+    observation: str,
+) -> Dict:
+    settings = get_edition_settings(config, edition)
+    title = build_issue_title(today.strftime("%Y-%m-%d"), edition=edition, template=settings.get("title_template"))
+    report = {
+        "edition": edition,
+        "title": title,
+        "datetime": today.strftime("%Y-%m-%d %H:%M"),
+        "subtitle": settings.get("subtitle", "每日精选"),
+        "weekly_repos": weekly_repos,
+        "sections": sections,
+        "observation_title": settings.get("observation_title", "今日观察"),
+        "observation": observation,
+        "labels": settings.get("labels", ["daily-report"]),
+        "include_weather": settings.get("include_weather", True),
+    }
+    if report["include_weather"] and weather is not None:
+        report["weather"] = weather
+    report["body"] = render_issue_markdown(report)
+    return report
 
 
 def news_candidate_score(item: Dict, section: str = "") -> int:
@@ -1005,8 +1358,41 @@ def normalize_report_content(report: Dict, config: Dict) -> Dict:
     return normalized
 
 
+def build_entertainment_sections(
+    edition: str,
+    edition_settings: Dict,
+    hotlist_candidates: List[Dict],
+    entertainment_candidates: List[Dict],
+    game_candidates: List[Dict],
+) -> List[Dict]:
+    used_keys: set[tuple[str, str]] = set()
+    pure_social = dedupe_candidates(hotlist_candidates)
+    all_candidates = dedupe_candidates(hotlist_candidates + entertainment_candidates + game_candidates)
+
+    section_map = {
+        "social": pick_entertainment_items(pure_social, "social", used_keys, min_items=3, max_items=8),
+        "memes": pick_entertainment_items(pure_social, "memes", used_keys, min_items=3, max_items=6),
+        "games": pick_entertainment_items(game_candidates + entertainment_candidates, "games", used_keys, min_items=3, max_items=6 if edition == "noon" else 8),
+        "picks": pick_entertainment_items(all_candidates, "picks", used_keys, min_items=2, max_items=4),
+        "video": pick_entertainment_items(all_candidates, "video", used_keys, min_items=3, max_items=8),
+        "night_picks": pick_entertainment_items(all_candidates, "night_picks", used_keys, min_items=2, max_items=6),
+    }
+
+    sections = []
+    for section in edition_settings.get("sections", []):
+        sections.append(
+            {
+                "name": section["name"],
+                "emoji": section.get("emoji", ""),
+                "items": section_map.get(section["key"], []),
+            }
+        )
+    return sections
+
+
 def build_report(
     config: Dict,
+    edition: str,
     today: datetime,
     candidates: List[Dict],
     news_candidates: Dict[str, List[Dict]],
@@ -1014,11 +1400,31 @@ def build_report(
     weekly_repos: List[Dict],
     weather: Dict,
 ) -> Dict:
+    edition_settings = get_edition_settings(config, edition)
+    if edition in {"noon", "evening"}:
+        sections = build_entertainment_sections(
+            edition,
+            edition_settings,
+            hotlist_candidates=candidates,
+            entertainment_candidates=news_candidates.get("entertainment", []),
+            game_candidates=game_candidates,
+        )
+        return build_edition_report(
+            config=config,
+            edition=edition,
+            today=today,
+            weather=weather if edition_settings.get("include_weather") else None,
+            sections=sections,
+            weekly_repos=[],
+            observation=build_entertainment_observation(edition, sections),
+        )
+
     curated = summarize_with_ai(config, candidates, news_candidates, game_candidates, weekly_repos, weather, today)
     report = {
-        "title": build_issue_title(today.strftime("%Y-%m-%d")),
+        "edition": "morning",
+        "title": build_issue_title(today.strftime("%Y-%m-%d"), edition="morning", template=edition_settings.get("title_template")),
         "datetime": today.strftime("%Y-%m-%d %H:%M"),
-        "subtitle": curated.get("subtitle", "为你整理的每日综合资讯精选"),
+        "subtitle": curated.get("subtitle", edition_settings.get("subtitle", "为你整理的每日综合资讯精选")),
         "weather": weather,
         "weekly_repos": curated.get("weekly_repos", weekly_repos),
         "news_sections": curated.get("news_sections", fallback_news_sections(news_candidates, config.get("max_items_per_news_section", 5))),
@@ -1030,18 +1436,21 @@ def build_report(
     report = localize_report_content(report)
     report = normalize_report_content(report, config)
     report["body"] = render_issue_markdown(report)
-    report["labels"] = config.get("labels", ["daily-report", "morning"])
+    report["labels"] = edition_settings.get("labels", config.get("labels", ["daily-report", "morning"]))
     return report
 
 
 def main() -> None:
     config = load_config()
+    edition = os.environ.get("EDITION", "morning").strip().lower() or "morning"
+    edition_settings = get_edition_settings(config, edition)
     timezone_name = config.get("timezone", "Asia/Shanghai")
     tz_now = get_now_in_timezone(timezone_name)
-    weather = fetch_weather(config["city"], timezone_name=timezone_name)
+    weather = fetch_weather(config["city"], timezone_name=timezone_name) if edition_settings.get("include_weather", True) else {}
     trendradar_path = os.environ.get("TRENDRADAR_PATH", "trendradar-engine")
     rss_candidates = fetch_rss_candidates(config.get("english_feeds", []))
     hotlist_candidates = fetch_hotlist_candidates(config, trendradar_path)
+    entertainment_candidates = fetch_rss_candidates(config.get("entertainment_feeds", []))
     domestic_news = fetch_news_section_candidates(config.get("news_feeds", {}).get("domestic", []), "domestic")
     international_news = fetch_news_section_candidates(config.get("news_feeds", {}).get("international", []), "international")
     game_news = fetch_game_news_candidates(config.get("game_news_feeds", []))
@@ -1050,6 +1459,7 @@ def main() -> None:
     news_candidates = {
         "domestic": domestic_news,
         "international": international_news,
+        "entertainment": entertainment_candidates,
     }
     game_candidates = curate_game_candidates(
         game_releases,
@@ -1063,7 +1473,7 @@ def main() -> None:
     except Exception as exc:
         print(f"[GitHub Trending] 抓取失败，跳过该板块: {exc}")
 
-    report = build_report(config, tz_now, candidates, news_candidates, game_candidates, weekly_repos, weather)
+    report = build_report(config, edition, tz_now, hotlist_candidates if edition in {"noon", "evening"} else candidates, news_candidates, game_candidates, weekly_repos, weather)
 
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)

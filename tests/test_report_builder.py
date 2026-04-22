@@ -135,6 +135,101 @@ class ReportBuilderTests(unittest.TestCase):
             "个人资讯简报 | 2026-04-20 早间",
         )
 
+    def test_build_issue_title_supports_noon_and_evening_templates(self):
+        self.assertEqual(
+            build_issue_title("2026-04-20", edition="noon"),
+            "午间轻松报 | 2026-04-20",
+        )
+        self.assertEqual(
+            build_issue_title("2026-04-20", edition="evening"),
+            "夜间玩乐报 | 2026-04-20",
+        )
+
+    def test_render_issue_markdown_uses_noon_entertainment_layout_without_weather(self):
+        report = {
+            "edition": "noon",
+            "title": "午间轻松报 | 2026-04-20",
+            "datetime": "2026-04-20 12:00",
+            "subtitle": "中午适合快速刷一遍的娱乐休闲精选",
+            "weekly_repos": [],
+            "sections": [
+                {
+                    "name": "社媒热议",
+                    "emoji": "📱",
+                    "items": [
+                        {
+                            "title": "微博热议话题",
+                            "url": "https://example.com/social",
+                            "summary": "这条话题在多个平台持续发酵，适合中午快速跟进。",
+                        }
+                    ],
+                },
+                {
+                    "name": "今日热梗",
+                    "emoji": "🤣",
+                    "items": [
+                        {
+                            "title": "爆梗名场面",
+                            "url": "https://example.com/meme",
+                            "summary": "今天讨论度最高的梗图和二创集中在这条线上。",
+                        }
+                    ],
+                },
+            ],
+            "observation": "今天中午的讨论明显偏社媒热梗和视频平台扩散。",
+        }
+
+        content = render_issue_markdown(report)
+
+        self.assertNotIn("## 🌤️ 天气", content)
+        self.assertIn("## 📱 社媒热议", content)
+        self.assertIn("## 🤣 今日热梗", content)
+        self.assertIn("**[微博热议话题](https://example.com/social)**", content)
+        self.assertIn("## 💡 午间观察", content)
+
+    def test_render_issue_markdown_uses_evening_entertainment_layout(self):
+        report = {
+            "edition": "evening",
+            "title": "夜间玩乐报 | 2026-04-20",
+            "datetime": "2026-04-20 21:00",
+            "subtitle": "今晚值得看的轻松内容和热门游戏动向",
+            "weekly_repos": [],
+            "sections": [
+                {
+                    "name": "晚间游戏热点",
+                    "emoji": "🎮",
+                    "items": [
+                        {
+                            "title": "GTA 6 新预告",
+                            "url": "https://example.com/game",
+                            "summary": "这是今晚最值得点进去看的大型游戏热点。",
+                            "meta": "来源：Google News 游戏",
+                        }
+                    ],
+                },
+                {
+                    "name": "今夜玩点啥",
+                    "emoji": "🌙",
+                    "items": [
+                        {
+                            "title": "今晚适合补完的内容",
+                            "url": "https://example.com/night",
+                            "summary": "如果只想睡前轻松刷一条，这条最合适。",
+                        }
+                    ],
+                },
+            ],
+            "observation": "今晚的关注点明显集中在大型游戏和视频平台延续热度上。",
+        }
+
+        content = render_issue_markdown(report)
+
+        self.assertNotIn("## 🌤️ 天气", content)
+        self.assertIn("## 🎮 晚间游戏热点", content)
+        self.assertIn("## 🌙 今夜玩点啥", content)
+        self.assertIn("来源：Google News 游戏", content)
+        self.assertIn("## 💡 夜间观察", content)
+
     @patch("scripts.generate_report.requests.post")
     def test_summarize_with_ai_falls_back_when_ai_request_fails(self, mock_post):
         mock_response = Mock()

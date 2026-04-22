@@ -4,6 +4,59 @@ issue_title_template: "个人资讯简报 | {date} 早间"
 labels:
   - daily-report
   - morning
+editions:
+  morning:
+    title_template: "个人资讯简报 | {date} 早间"
+    labels:
+      - daily-report
+      - morning
+    subtitle: "为你整理的每日综合资讯精选"
+    include_weather: true
+    observation_title: "今日观察"
+  noon:
+    title_template: "午间轻松报 | {date}"
+    labels:
+      - daily-report
+      - noon
+      - entertainment
+    subtitle: "中午适合快速刷一遍的娱乐休闲精选"
+    include_weather: false
+    observation_title: "午间观察"
+    sections:
+      - key: social
+        name: 社媒热议
+        emoji: 📱
+      - key: memes
+        name: 今日热梗
+        emoji: 🤣
+      - key: games
+        name: 轻量游戏动向
+        emoji: 🎮
+      - key: picks
+        name: 午间一刷
+        emoji: ✨
+  evening:
+    title_template: "夜间玩乐报 | {date}"
+    labels:
+      - daily-report
+      - evening
+      - entertainment
+    subtitle: "今晚值得一口气看完的轻松内容和热门游戏动向"
+    include_weather: false
+    observation_title: "夜间观察"
+    sections:
+      - key: games
+        name: 晚间游戏热点
+        emoji: 🎮
+      - key: video
+        name: 视频与直播热议
+        emoji: 📺
+      - key: night_picks
+        name: 今夜玩点啥
+        emoji: 🌙
+      - key: memes
+        name: 今日热梗回顾
+        emoji: 🤣
 max_topics: 4
 max_items_per_topic: 6
 weekly_repo_count: 8
@@ -105,3 +158,25 @@ game_news_feeds:
     name: Google News 主机游戏
     url: https://news.google.com/rss/search?q=when:7d+主机游戏&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
     max_items: 12
+
+entertainment_feeds:
+  - id: google-news-ent-games
+    name: Google News 游戏
+    url: https://news.google.com/rss/search?q=when:3d+游戏+新闻&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 10
+  - id: google-news-ent-steam
+    name: Google News Steam
+    url: https://news.google.com/rss/search?q=when:3d+Steam+游戏&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 8
+  - id: google-news-ent-console
+    name: Google News 主机游戏
+    url: https://news.google.com/rss/search?q=when:3d+主机游戏&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 8
+  - id: google-news-ent-drama
+    name: Google News 影视剧综
+    url: https://news.google.com/rss/search?q=when:3d+影视+剧集+综艺&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 10
+  - id: google-news-ent-anime
+    name: Google News 动漫二次元
+    url: https://news.google.com/rss/search?q=when:3d+动漫+二次元&hl=zh-CN&gl=CN&ceid=CN:zh-Hans
+    max_items: 10
